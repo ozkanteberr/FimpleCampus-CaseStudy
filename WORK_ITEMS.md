@@ -14,7 +14,7 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G06 | ATM oluştur/konfigüre/yükle/hizmete al | Gerçek DB üzerinden HTTP akışı + rollback/kapasite testleri | Verified with PostgreSQL 17 HTTP integration test |
 | G07 | Bakım/boşalt/yeniden yapılandır | Yanlış durumda ret; fiziksel stok/movement tutarlılığı | Verified with PostgreSQL 17 maintenance integration test |
 | G08 | Ledger immutable ve consistency | SQL update/delete reddi, doğru/bozuk stok tespiti | Verified with PostgreSQL 17 ledger and consistency integration test |
-| G09 | Docker, Swagger, ProblemDetails, health | Temiz compose ve gerçek HTTP doğrulaması | Kodlandı / doğrulama bekliyor |
+| G09 | Docker, Swagger, ProblemDetails, health | Temiz compose ve gerçek HTTP doğrulaması | Verified with clean Docker Compose and HTTP integration test |
 | G10 | Quote/alternative/reservation modeli | Migration ve reservation toplam kuralları | Bekliyor |
 | G11 | Kart kimliği ve günlük limit modeli | Ham kart saklanmaz; UTC/ağ genelinde limit | Bekliyor |
 | G12 | Quote endpoint | Tam/alt/üst ve kaset bazında birleşik rezervasyon | Bekliyor |
