@@ -11,4 +11,4 @@ Date: 12 October 2026 (Europe/Istanbul).
 
 ## Delivery status
 
-The verified collection and environment are in `docs/postman`. The remaining G32 task is final documentation, traceability, and Git repository or ZIP handoff. Local Compose credentials, seeded exchange rates, and the development card HMAC key are demonstration settings.
+The verified collection and environment are in `docs/postman`. The README contains the final run instructions, architecture rationale, assumptions, limitations, AI-use note, and A1-A12/B1-B10 traceability. The repository owner performs the final commit and push; no ZIP is required. Local Compose credentials, seeded exchange rates, and the development card HMAC key are demonstration settings.

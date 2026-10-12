@@ -9,4 +9,4 @@ Verified on PostgreSQL 17 through Docker Compose.
 - `docker compose up -d --build api` built and started the API. On startup it applied `20261012092747_InitialCashManagement` to the Compose database.
 - `GET /health` returned `Healthy`; `GET /openapi/v1.json` returned HTTP 200.
 
-The database and API containers remain running for subsequent development. This verifies the initial migration and startup path; the full ATM transaction flow belongs to G06.
+This is the historical G05 checkpoint. The final clean-stack results, including all ATM flows, are recorded in `VERIFICATION.md`.

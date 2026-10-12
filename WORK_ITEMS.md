@@ -1,44 +1,40 @@
-# Atomik İş Listesi
+# Atomic Work Items
 
-Kullanıcının isteği: bütün vaka tek seferde tamamlanmayacak. Bir iş, kabul ölçütü ve doğrulamasıyla kapatılır; sonra ayrı adımda sıradakine geçilir. Büyük aşamalar `ROADMAP.md` içindedir.
+The case study was delivered in reviewable increments. Each item below was completed and verified before the next one began. See `VERIFICATION.md` for the final clean-stack run and `README.md` for requirement-level evidence.
 
-Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
+| ID | Work item | Acceptance criterion | Result |
+| --- | --- | --- | --- |
+| G01 | Scope and roadmap | Cover Parts A and B, technical requirements, and deliverables | Verified |
+| G02 | .NET solution and dependencies | Release build without errors or warnings | Verified |
+| G03 | Banknote selector | Eight required B3 cases and an independent stock oracle pass | Verified |
+| G04 | Cassette and lifecycle rules | Currency, denomination, configuration, and state tests pass | Verified |
+| G05 | EF model and initial migration | Fresh migration and exchange-rate seed on PostgreSQL | Verified |
+| G06 | ATM setup flow | Real-database create, configure, load, and service HTTP flow | Verified |
+| G07 | Maintenance and reconfiguration | Invalid states rejected; cash and movement totals preserved | Verified |
+| G08 | Immutable movement ledger | SQL updates/deletes rejected; consistency endpoint detects differences | Verified |
+| G09 | Container and API surface | Compose startup, Swagger/OpenAPI, ProblemDetails, and health | Verified |
+| G10 | Quote and reservation model | Migration and reservation invariants pass | Verified |
+| G11 | Card identity and daily limits | HMAC fingerprint, UTC day, and network-wide limits | Verified |
+| G12 | Quote endpoint | Exact/lower/upper alternatives and merged reservations | Verified |
+| G13 | Duplicate-denomination cassettes | Fuller cassette dispenses first without overbooking | Verified |
+| G14 | Quote confirmation | Selected notes debited; unused reservations released | Verified |
+| G15 | Confirmation idempotency | Same-key replay is stable; changed request conflicts | Verified |
+| G16 | Quote cancellation | Note and daily-limit reservations released | Verified |
+| G17 | Automatic quote expiry | Reservations released after 60 seconds; late confirmation rejected | Verified |
+| G18 | Maintenance with active quotes | Entering maintenance cancels and releases active quotes | Verified |
+| G19 | Concurrent ATM quotes | Parallel requests cannot reserve a physical note twice | Verified |
+| G20 | Concurrent card limits | Parallel requests at different ATMs share one card limit | Verified |
+| G21 | Deposit routing | Recycling, then deposit-only, then return; unrecognized notes excluded | Verified |
+| G22 | Deposit boundaries | Mixed notes, duplicate cassettes, capacity, and partial returns | Verified |
+| G23 | Reconciliation calculation | Every cassette counted; differences and rate snapshots recorded | Verified |
+| G24 | Second-user approval | Difference above TRY 1,000 blocks service until another user approves | Verified |
+| G25 | Reconciliation boundaries | TRY 999/1,000/1,001 and positive/negative differences | Verified |
+| G26 | ATM and network reports | Physical, reserved, available, currency, and TRY totals | Verified |
+| G27 | Low-cash outbox event | Crossing from 10 to 9 available notes writes an event atomically | Verified |
+| G28 | Outbox worker | Pending events logged, marked sent, and retried after failure | Verified |
+| G29 | Postman collection and environment | Ordered flow passes IDs through setup, cash operations, approval, and reports | Verified: 22 requests |
+| G30 | Error and API contract review | Invalid JSON, null entries, missing headers, and state conflicts use ProblemDetails | Verified: 56 Release tests |
+| G31 | Fresh Docker and full verification | New Compose volume, all Release tests, and Postman end-to-end flow | Verified: 56 tests and 22 requests |
+| G32 | Documentation and repository handoff | English README, assumptions, limitations, AI note, and A/B traceability | Verified in repository; Git push is performed by the repository owner |
 
-| ID | Atomik iş | Kabul ölçütü | Durum |
-|---|---|---|---|
-| G01 | Yol haritası ve kapsam/varsayımlar | Bütün A/B, teknik ve teslim maddeleri planlandı | Doğrulandı |
-| G02 | .NET solution, proje referansları ve paketler | Release build, sıfır hata/uyarı | Doğrulandı |
-| G03 | Banknot algoritması | PDF 8 test + bağımsız stok oracle'ı geçer | Doğrulandı |
-| G04 | Kaset ve durum domain kuralları | Para/kupür/döviz ve geçiş unit testleri geçer | Doğrulandı |
-| G05 | EF model ve ilk migration | Gerçek PostgreSQL'de temiz migration ve seed | Verified on PostgreSQL 17 |
-| G06 | ATM oluştur/konfigüre/yükle/hizmete al | Gerçek DB üzerinden HTTP akışı + rollback/kapasite testleri | Verified with PostgreSQL 17 HTTP integration test |
-| G07 | Bakım/boşalt/yeniden yapılandır | Yanlış durumda ret; fiziksel stok/movement tutarlılığı | Verified with PostgreSQL 17 maintenance integration test |
-| G08 | Ledger immutable ve consistency | SQL update/delete reddi, doğru/bozuk stok tespiti | Verified with PostgreSQL 17 ledger and consistency integration test |
-| G09 | Docker, Swagger, ProblemDetails, health | Temiz compose ve gerçek HTTP doğrulaması | Verified with clean Docker Compose and HTTP integration test |
-| G10 | Quote/alternative/reservation modeli | Migration ve reservation toplam kuralları | Verified with PostgreSQL 17 migration and reservation rule tests |
-| G11 | Kart kimliği ve günlük limit modeli | Ham kart saklanmaz; UTC/ağ genelinde limit | Verified with HMAC, UTC, and PostgreSQL network limit tests |
-| G12 | Quote endpoint | Tam/alt/üst ve kaset bazında birleşik rezervasyon | Verified with PostgreSQL 17 quote and reservation HTTP integration test |
-| G13 | Aynı kupürlü kasetlerden çekim | Daha dolu kaset önce; kapasite/stok aşılmaz | Verified with PostgreSQL 17 duplicate-cassette quote integration test |
-| G14 | Confirm | Seçilen alternatif debit; kalan rezervasyon bırakılır | Verified with PostgreSQL 17 confirmation and release integration tests |
-| G15 | Confirm idempotency | Duplicate aynı response/tek debit; farklı payload 409 | Verified with concurrent PostgreSQL 17 confirmation replay and conflict tests |
-| G16 | Cancel | Nakit ve kart limiti rezervasyonu bırakılır | Verified with PostgreSQL 17 cancellation and reservation release integration test |
-| G17 | Expiry hosted service | 60 saniye sonra otomatik bırakma; geç onay reddi | Verified with PostgreSQL 17 automatic expiry and late-confirm integration test |
-| G18 | Bakım ve teklifler | Bakıma geçiş aktif teklifleri iptal eder | Verified with PostgreSQL 17 maintenance cancellation and concurrent quote integration test |
-| G19 | Eş zamanlı ATM teklif testi | Paralel HTTP istekleri aynı banknotu iki kez ayıramaz | Verified with 12 concurrent PostgreSQL 17 HTTP quote requests |
-| G20 | Eş zamanlı kart/ağ limiti testi | Farklı ATM'lerde aynı kartın toplamı limiti aşmaz | Verified with concurrent cross-ATM PostgreSQL 17 card-limit HTTP tests |
-| G21 | Yatırma ve iade | Recycling → deposit-only → iade; tanınmayan hariç | Verified with PostgreSQL 17 deposit, overflow return, and ledger integration test |
-| G22 | Yatırma sınır testleri | Karma para/duplicate kaset/tam dolu/kısmi kabul | Verified with PostgreSQL 17 mixed-note, duplicate-cassette, full-cassette, and partial-return tests |
-| G23 | Mutabakat kayıt ve fark hesabı | Her kaset/para/kupür sayımı; kur snapshot'ı | Verified with PostgreSQL 17 physical count, adjustment, and rate snapshot integration test |
-| G24 | Second-user reconciliation approval | Differences above 1000 TRY require approval; reject self-approval; block service return until approval | Verified with PostgreSQL integration coverage and all 53 Release tests passing |
-| G25 | Reconciliation boundary tests | Verify 999/1000/1001 TRY, positive and negative differences, and approval flow | Verified with PostgreSQL boundary integration coverage and all 54 Release tests passing |
-| G26 | ATM and network reporting | Physical, reserved, and available counts; currency and converted TRY totals | Verified with two-ATM PostgreSQL report integration coverage |
-| G27 | Low-cash outbox creation | Available recycling notes cross from 10 to 9; event shares the stock transaction | Verified with PostgreSQL reservation, rejected-request, and re-arming integration test |
-| G28 | Outbox hosted service | Log pending events, mark sent, and retry after failure | Verified with PostgreSQL retry and hosted-worker integration tests |
-| G29 | Postman collection/environment | Pass IDs through the complete ordered end-to-end scenario | Verified: 22 Newman requests passed against the current API and PostgreSQL 17 |
-| G30 | Error and API contract review | ProblemDetails for null, invalid, missing-header, and state-conflict requests | Verified with PostgreSQL API integration coverage and all 56 Release tests passing |
-| G31 | Clean Docker and full test run | Release unit/integration suite plus ordered end-to-end scenario | Verified: fresh Compose volume, 56 Release tests, 22 Newman requests |
-| G32 | README, izlenebilirlik ve teslim | Gerçek durum, varsayımlar, AI beyanı, Git/ZIP | Bekliyor |
-
-## Next atomic step
-
-G32: finalize English documentation, traceability, and repository/ZIP delivery evidence.
+The repository owner chose a Git repository link as the deliverable; no ZIP is required.

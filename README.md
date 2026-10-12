@@ -1,6 +1,6 @@
 # ATM Cash Management Backend
 
-ASP.NET Core 10 REST API for a network of ATMs, backed by PostgreSQL and EF Core code-first migrations. The API covers the ATM lifecycle, bounded note selection, two-step withdrawals, deposits, movement accounting, and physical reconciliation. The remaining delivery work is stated below.
+ASP.NET Core 10 REST API for a network of ATMs, backed by PostgreSQL and EF Core code-first migrations. The API covers the ATM lifecycle, bounded note selection, two-step withdrawals, deposits, movement accounting, physical reconciliation, reporting, and low-cash alerts.
 
 ## How to run the project and its tests
 
@@ -17,7 +17,11 @@ For local API development, install the .NET 10 SDK, start only the database with
 
 With PostgreSQL running, execute `dotnet test AtmCashManagement.sln -c Release`. Integration tests create and drop isolated real PostgreSQL databases. Their administrative connection defaults to `Host=127.0.0.1;Port=55432;Database=postgres;Username=atm_app;Password=atm_local_password`; override it with `ATM_TEST_PG`. The latest Release run passed 56/56 tests, including all eight required B3 note-selection cases, concurrency, real-database HTTP flows, deposits, ledger checks, and reconciliation boundaries. For unit tests alone, use `dotnet test AtmCashManagement.sln -c Release --filter 'Category!=Integration'`.
 
-Import `docs/postman/ATM-Cash-Management.postman_collection.json` and `docs/postman/ATM-Cash-Management.local.postman_environment.json` into Postman, select the **ATM Cash Management - Local Docker** environment, and run the complete collection in its existing order. The environment defaults to `http://localhost:5080` for Compose; change `baseUrl` if the API uses another port. The collection creates a new ATM on each run and passes returned IDs between requests. It covers setup, load, service, quote/confirm/cancel, deposit, maintenance, physical count, second-user approval, return to service, and ATM/network reports. The high-difference count intentionally submits one extra USD 100 note; self-approval must return `409` before a different user succeeds. For a command-line run, use `newman run docs/postman/ATM-Cash-Management.postman_collection.json -e docs/postman/ATM-Cash-Management.local.postman_environment.json`.
+Import `docs/postman/ATM-Cash-Management.postman_collection.json` and `docs/postman/ATM-Cash-Management.local.postman_environment.json` into Postman, select the **ATM Cash Management - Local Docker** environment, and run the complete collection in its existing order. The environment defaults to `http://localhost:5080` for Compose; change `baseUrl` if the API uses another port. The collection creates a new ATM on each run and passes returned IDs between requests. It covers setup, load, service, quote/confirm/cancel, deposit, maintenance, physical count, second-user approval, return to service, and ATM/network reports. The high-difference count intentionally submits one extra USD 100 note; self-approval must return `409` before a different user succeeds. For a command-line run without a global Newman installation, use:
+
+```sh
+npm exec --yes --package newman -- newman run docs/postman/ATM-Cash-Management.postman_collection.json -e docs/postman/ATM-Cash-Management.local.postman_environment.json
+```
 
 An operational flow is:
 
@@ -89,20 +93,36 @@ This sample assumes no earlier withdrawal or deposit changed these particular co
 
 The lifecycle is `UNCONFIGURED -> CONFIGURED -> LOADED -> IN_SERVICE <-> MAINTENANCE`. Initial configuration and loading happen before service; later configuration, manual loading/unloading, and counting require maintenance. Withdrawals and customer deposits require `IN_SERVICE`. An invalid transition or operation in the wrong state returns a business error rather than silently changing stock. For example, an attempted quote in maintenance returns `409` with `code: INVALID_ATM_STATE`; self-approval of a pending reconciliation returns `409` with `code: SELF_APPROVAL_FORBIDDEN`. The ProblemDetails response also includes a human-readable detail and trace ID.
 
-### Requirements and verification
+### Requirement traceability
 
-| Assignment requirement | Implementation and evidence | Status |
+The table maps every business requirement in the assignment to a working endpoint or rule and a direct test. All listed tests are part of the 56-test Release suite that passed against PostgreSQL 17.
+
+| ID | Implemented behavior | Direct verification |
 | --- | --- | --- |
-| A1-A7, B1-B2: currencies, denominations, five cassettes, capacities, lifecycle, multiple ATMs | Domain validation, setup and maintenance HTTP flows, duplicate-denomination cassette allocation tests | Implemented |
-| A8, B9: count and reconcile every cassette, TRY conversion, four-eyes approval | Physical count and 999/1000/1001 TRY boundary integration tests; different `X-User` required above the threshold | Implemented |
-| A9-A10, B3-B6: optimal withdrawal, quote/confirm/cancel, expiry, card limits, concurrency | Eight specified acceptance tests; quote and idempotency tests; parallel ATM and cross-ATM card tests | Implemented |
-| A11, B7: deposit routing, overflow, returned/unrecognized notes | Deposit and boundary integration tests against PostgreSQL | Implemented |
-| A12, B8: per-ATM balances, immutable movements, consistency endpoint | Reporting and ledger integration tests, SQL update/delete protection | Implemented |
-| B10: network reporting and low-cash alert outbox | Reports, transactional outbox creation, and hosted logging/mark-sent processing are implemented | Implemented |
-| Technical: API, EF migrations, PostgreSQL, DI, Compose, OpenAPI, ProblemDetails, health | Fresh Compose project and volume started successfully; API health returned 200 and all 56 Release tests passed against its PostgreSQL instance | Verified |
-| Delivery: ordered Postman run, final repository/ZIP | All 22 collection requests passed against the newly built Compose API; final repository/ZIP handoff remains open | Postman verified; final handoff pending |
+| A1 | TRY, USD, and EUR are supported by note and cassette rules. | [CashRulesTests](tests/AtmCash.Tests/CashRulesTests.cs) |
+| A2 | Only 20, 50, 100, and 500 banknotes are accepted; no coins. | [CashRulesTests](tests/AtmCash.Tests/CashRulesTests.cs), [NoteSelectorTests](tests/AtmCash.Tests/NoteSelectorTests.cs) |
+| A3 | Each ATM has five cassettes, each capped at 100 notes. | [AtmSetupIntegrationTests](tests/AtmCash.Tests/AtmSetupIntegrationTests.cs) |
+| A4 | One mixed deposit-only cassette accepts notes but never dispenses them. | [CashRulesTests](tests/AtmCash.Tests/CashRulesTests.cs), [DepositIntegrationTests](tests/AtmCash.Tests/DepositIntegrationTests.cs) |
+| A5 | Four recycling cassettes each hold one currency and denomination. | [CashRulesTests](tests/AtmCash.Tests/CashRulesTests.cs) |
+| A6 | One or two recycling cassettes use USD or EUR. | [CashRulesTests](tests/AtmCash.Tests/CashRulesTests.cs) |
+| A7 | `POST /api/atms`, configuration, and manual load precede service. | [AtmSetupIntegrationTests](tests/AtmCash.Tests/AtmSetupIntegrationTests.cs) |
+| A8 | `POST /api/atms/{id}/reconciliations` records all physical counts and differences. | [ReconciliationIntegrationTests](tests/AtmCash.Tests/ReconciliationIntegrationTests.cs) |
+| A9 | Quote selection returns an exact note breakdown or nearest payable alternatives. | [NoteSelectorTests](tests/AtmCash.Tests/NoteSelectorTests.cs), [QuoteIntegrationTests](tests/AtmCash.Tests/QuoteIntegrationTests.cs) |
+| A10 | `POST /api/quotes/{id}/confirm` performs the selected withdrawal. | [QuoteConfirmationIntegrationTests](tests/AtmCash.Tests/QuoteConfirmationIntegrationTests.cs) |
+| A11 | `POST /api/atms/{id}/deposits` routes recognized notes to recycling or deposit-only cassettes. | [DepositIntegrationTests](tests/AtmCash.Tests/DepositIntegrationTests.cs) |
+| A12 | `GET /api/atms/{id}/report` exposes note counts and balance. | [AtmSetupIntegrationTests](tests/AtmCash.Tests/AtmSetupIntegrationTests.cs) |
+| B1 | The API manages multiple ATMs and `GET /api/report` aggregates them. | [AtmSetupIntegrationTests](tests/AtmCash.Tests/AtmSetupIntegrationTests.cs), [CardDailyLimitIntegrationTests](tests/AtmCash.Tests/CardDailyLimitIntegrationTests.cs) |
+| B2 | Lifecycle gates cash operations; duplicate-note cassettes dispense from the fuller one first. | [AtmMaintenanceIntegrationTests](tests/AtmCash.Tests/AtmMaintenanceIntegrationTests.cs), [DuplicateCassetteQuoteIntegrationTests](tests/AtmCash.Tests/DuplicateCassetteQuoteIntegrationTests.cs) |
+| B3 | Bounded optimal note selection passes the eight required cases and independent exhaustive checks. | [NoteSelectorTests](tests/AtmCash.Tests/NoteSelectorTests.cs) |
+| B4 | Quotes reserve notes for 60 seconds; confirm, cancel, expiry, and idempotent replay are enforced. | [QuoteConfirmationIntegrationTests](tests/AtmCash.Tests/QuoteConfirmationIntegrationTests.cs), [QuoteCancellationIntegrationTests](tests/AtmCash.Tests/QuoteCancellationIntegrationTests.cs), [QuoteExpiryIntegrationTests](tests/AtmCash.Tests/QuoteExpiryIntegrationTests.cs) |
+| B5 | Per-card UTC-day limits include reservations; only an HMAC fingerprint is stored. | [CardDailyLimitTests](tests/AtmCash.Tests/CardDailyLimitTests.cs), [CardDailyLimitIntegrationTests](tests/AtmCash.Tests/CardDailyLimitIntegrationTests.cs) |
+| B6 | PostgreSQL locks prevent concurrent double reservation at one ATM and cross-ATM limit races. | [ConcurrentAtmQuoteIntegrationTests](tests/AtmCash.Tests/ConcurrentAtmQuoteIntegrationTests.cs), [ConcurrentCardLimitIntegrationTests](tests/AtmCash.Tests/ConcurrentCardLimitIntegrationTests.cs) |
+| B7 | Deposits return unrecognized notes and overflow when both destinations are full. | [DepositIntegrationTests](tests/AtmCash.Tests/DepositIntegrationTests.cs), [DepositBoundaryIntegrationTests](tests/AtmCash.Tests/DepositBoundaryIntegrationTests.cs) |
+| B8 | Immutable movements reconstruct physical and reserved stock; `/api/atms/{id}/consistency` compares balances. | [MigrationIntegrationTests](tests/AtmCash.Tests/MigrationIntegrationTests.cs), [AtmMaintenanceIntegrationTests](tests/AtmCash.Tests/AtmMaintenanceIntegrationTests.cs) |
+| B9 | Above TRY 1,000, reconciliation waits for a different `X-User` before service resumes. | [ReconciliationIntegrationTests](tests/AtmCash.Tests/ReconciliationIntegrationTests.cs) |
+| B10 | ATM/network reports and transactional low-cash outbox events are processed by a hosted worker. | [AtmSetupIntegrationTests](tests/AtmCash.Tests/AtmSetupIntegrationTests.cs), [OutboxIntegrationTests](tests/AtmCash.Tests/OutboxIntegrationTests.cs) |
 
-This table describes implemented code and existing automated evidence, not a claim that every delivery gate has been completed. The current detailed task ledger is `WORK_ITEMS.md`.
+The technical requirements are covered by the ASP.NET Core API, EF Core migrations, PostgreSQL, dependency injection, Compose, OpenAPI, ProblemDetails, and database health check. [ApiSurfaceIntegrationTests](tests/AtmCash.Tests/ApiSurfaceIntegrationTests.cs) verify the public API surface and error model. A fresh Compose project passed all 56 Release tests and the full 22-request [Postman collection](docs/postman/ATM-Cash-Management.postman_collection.json); see [VERIFICATION.md](VERIFICATION.md). [WORK_ITEMS.md](WORK_ITEMS.md) records the 32 atomic delivery steps.
 
 ## Architecture and key design decisions
 
@@ -142,12 +162,14 @@ The B3 cases specifically exercise stock-constrained exact payment, nearest lowe
 
 ## Unfinished items and known limitations
 
-- Low cash means fewer than 10 available notes in a recycling cassette, since capacity is 100. Crossing from 10 to 9 creates an event; recovery to 10 allows a future event. The hosted worker logs pending events and marks them sent; failures leave them pending for retry. Delivery is logging only, as requested by the assignment; no external notification channel is integrated.
-- A fresh Docker Compose project with a new PostgreSQL volume passed all 56 Release tests and the complete 22-request Postman scenario. The isolated verification used API port 5082 and PostgreSQL port 55433 to avoid interrupting an existing local stack; the repository Compose file retains its documented 5080/55432 ports.
-- Local Compose credentials, development HMAC key, and seeded rates are demonstration settings. There is no production authentication, authorization, card-network integration, or secret management.
+No assignment requirement is currently known to be unfinished. The final verification used a fresh Compose project and PostgreSQL volume: 56/56 Release tests and 22/22 Postman requests passed. Its isolated API and database ports were 5082 and 55433; the repository Compose file uses 5080 and 55432.
 
-`WORK_ITEMS.md` tracks atomic delivery status. `ROADMAP.md` records the full assignment plan. Final submission requires the Git repository or ZIP and the Postman collection/environment.
+- The low-cash threshold is fewer than 10 available notes in a recycling cassette. The hosted worker logs pending outbox events and marks them sent; a crash after logging but before marking can log the same event again. Delivery is logging only, as required by the assignment; there is no external notification channel.
+- `X-User` is an audit and four-eyes identifier, not authentication. Local Compose credentials, the development HMAC key, and seeded exchange rates are demonstration settings. Production deployment would require real identity, authorization, secret management, and exchange-rate integration.
+- The Postman collection creates an ATM on every run and does not delete it. Tests use isolated databases and remove them after execution.
+
+The deliverable is the [Git repository](https://github.com/ozkanteberr/FimpleCampus-CaseStudy) with the collection/environment in `docs/postman`. The repository owner performs the final commit and push.
 
 ## AI tools used
 
-OpenAI Codex assisted with requirements analysis, architecture, code, migrations, test cases, and documentation. Its output was reviewed against the assignment PDF and corrected through the required eight B3 cases, independent exhaustive note-selection checks, real PostgreSQL tests, package/version alignment, and fixes to temporary test-database cleanup. Unfinished generated plans are reported as unfinished above.
+OpenAI Codex assisted with requirements analysis, architecture, code, migrations, test cases, and documentation. Its output was checked against the assignment PDF and corrected through the eight required B3 cases, independent exhaustive note-selection checks, real PostgreSQL tests, package/version alignment, temporary test-database cleanup, API contract tests, and a clean Compose/Postman run. Earlier draft documentation contained stale pending statuses and route names; this handoff replaces them with verified results.
