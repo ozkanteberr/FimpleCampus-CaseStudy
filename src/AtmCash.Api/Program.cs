@@ -18,6 +18,7 @@ builder.Services.AddDbContext<CashDbContext>(options => options.UseNpgsql(builde
 builder.Services.AddScoped<AtmOperations>();
 builder.Services.AddScoped<QuoteOperations>();
 builder.Services.AddScoped<QuoteExpiryOperations>();
+builder.Services.AddScoped<DepositOperations>();
 builder.Services.AddHostedService<QuoteExpiryWorker>();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgresql");
 
@@ -64,6 +65,9 @@ api.MapPost("/quotes/{id:guid}/confirm", async (Guid id, ConfirmQuoteRequest req
     await service.Confirm(id, request.AlternativeId, http.Request.Headers["Idempotency-Key"].ToString(), ct)).WithName("ConfirmQuote");
 api.MapPost("/quotes/{id:guid}/cancel", async (Guid id, QuoteOperations service, CancellationToken ct) =>
     await service.Cancel(id, ct)).WithName("CancelQuote");
+api.MapPost("/atms/{id:guid}/deposits", async (Guid id, DepositRequest request, DepositOperations service, CancellationToken ct) =>
+    await service.Deposit(id, request.Notes ?? throw new BusinessException("INVALID_REQUEST", "Notes list is required.", 400),
+        request.UnrecognisedCount, ct)).WithName("DepositCash");
 api.MapGet("/atms/{id:guid}/report", async (Guid id, AtmOperations service, CancellationToken ct) => await service.Report(id, ct));
 api.MapGet("/atms/{id:guid}/consistency", async (Guid id, AtmOperations service, CancellationToken ct) => await service.CheckConsistency(id, ct));
 api.MapGet("/exchange-rates", async (CashDbContext db, CancellationToken ct) => await db.ExchangeRates.AsNoTracking().ToListAsync(ct));
@@ -87,6 +91,7 @@ public sealed record CashRequest(List<CashEntry> Notes);
 public sealed record StateRequest(AtmState State);
 public sealed record QuoteRequest(string CardNumber, Currency Currency, int Amount);
 public sealed record ConfirmQuoteRequest(Guid AlternativeId);
+public sealed record DepositRequest(List<DepositEntry> Notes, int UnrecognisedCount);
 
 public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<ApiExceptionHandler> logger) : IExceptionHandler
 {

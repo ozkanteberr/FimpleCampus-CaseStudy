@@ -26,7 +26,7 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G18 | Bakım ve teklifler | Bakıma geçiş aktif teklifleri iptal eder | Verified with PostgreSQL 17 maintenance cancellation and concurrent quote integration test |
 | G19 | Eş zamanlı ATM teklif testi | Paralel HTTP istekleri aynı banknotu iki kez ayıramaz | Verified with 12 concurrent PostgreSQL 17 HTTP quote requests |
 | G20 | Eş zamanlı kart/ağ limiti testi | Farklı ATM'lerde aynı kartın toplamı limiti aşmaz | Verified with concurrent cross-ATM PostgreSQL 17 card-limit HTTP tests |
-| G21 | Yatırma ve iade | Recycling → deposit-only → iade; tanınmayan hariç | Bekliyor |
+| G21 | Yatırma ve iade | Recycling → deposit-only → iade; tanınmayan hariç | Verified with PostgreSQL 17 deposit, overflow return, and ledger integration test |
 | G22 | Yatırma sınır testleri | Karma para/duplicate kaset/tam dolu/kısmi kabul | Bekliyor |
 | G23 | Mutabakat kayıt ve fark hesabı | Her kaset/para/kupür sayımı; kur snapshot'ı | Bekliyor |
 | G24 | İkinci kişi onayı | >1000 TRY bekler; aynı kullanıcı ret; hizmete dönüş kilidi | Bekliyor |
