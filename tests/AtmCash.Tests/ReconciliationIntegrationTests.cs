@@ -15,6 +15,104 @@ public sealed class ReconciliationIntegrationTests
 {
     [Fact]
     [Trait("Category", "Integration")]
+    public async Task Approval_threshold_handles_999_1000_and_1001_try_differences()
+    {
+        var adminConnection = Environment.GetEnvironmentVariable("ATM_TEST_PG")
+            ?? "Host=127.0.0.1;Port=55432;Database=postgres;Username=atm_app;Password=atm_local_password";
+        var databaseName = "atm_reconciliation_boundary_test_" + Guid.NewGuid().ToString("N");
+        await using var admin = new NpgsqlConnection(adminConnection);
+        await admin.OpenAsync();
+        try
+        {
+            await using (var create = new NpgsqlCommand($"CREATE DATABASE \"{databaseName}\"", admin))
+                await create.ExecuteNonQueryAsync();
+            var testConnection = new NpgsqlConnectionStringBuilder(adminConnection) { Database = databaseName }.ConnectionString;
+            await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
+                web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:CashDb"] = testConnection,
+                    ["CardIdentity:HmacKey"] = "integration-test-card-hmac-key-with-32-bytes"
+                })));
+            using var client = factory.CreateClient();
+            client.DefaultRequestHeaders.Add("X-User", "count-officer");
+            var atmId = (await Read(await client.PostAsJsonAsync("/api/atms", new { name = "Boundary ATM" })))
+                .GetProperty("id").GetGuid();
+            await Read(await client.PutAsJsonAsync($"/api/atms/{atmId}/configuration", new
+            {
+                cassettes = new object[]
+                {
+                    Cassette(1, "Recycling", "TRY", 50), Cassette(2, "Recycling", "TRY", 20),
+                    Cassette(3, "Recycling", "USD", 100), Cassette(4, "Recycling", "EUR", 100),
+                    Cassette(5, "DepositOnly", null, null)
+                }
+            }));
+            await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/load", new
+            {
+                notes = new[] { Note(3, "USD", 100, 50) }
+            }));
+            await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/state", new { state = "IN_SERVICE" }));
+            await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/state", new { state = "MAINTENANCE" }));
+
+            var options = new DbContextOptionsBuilder<CashDbContext>().UseNpgsql(testConnection).Options;
+            await SetUsdRate(options, 9.99m);
+            var belowThreshold = await Reconcile(client, atmId, 49);
+            Assert.Equal("Completed", belowThreshold.GetProperty("status").GetString());
+            Assert.Equal(999m, belowThreshold.GetProperty("totalAbsoluteTryDifference").GetDecimal());
+            Assert.Equal(-1, Assert.Single(belowThreshold.GetProperty("lines").EnumerateArray().ToArray())
+                .GetProperty("deltaCount").GetInt32());
+
+            await SetUsdRate(options, 10m);
+            var atThreshold = await Reconcile(client, atmId, 50);
+            Assert.Equal("Completed", atThreshold.GetProperty("status").GetString());
+            Assert.Equal(1_000m, atThreshold.GetProperty("totalAbsoluteTryDifference").GetDecimal());
+            Assert.Equal(1, Assert.Single(atThreshold.GetProperty("lines").EnumerateArray().ToArray())
+                .GetProperty("deltaCount").GetInt32());
+
+            await SetUsdRate(options, 10.01m);
+            var aboveThreshold = await Reconcile(client, atmId, 49);
+            var reconciliationId = aboveThreshold.GetProperty("id").GetGuid();
+            Assert.Equal("PendingApproval", aboveThreshold.GetProperty("status").GetString());
+            Assert.Equal(1_001m, aboveThreshold.GetProperty("totalAbsoluteTryDifference").GetDecimal());
+            Assert.Equal(-1, Assert.Single(aboveThreshold.GetProperty("lines").EnumerateArray().ToArray())
+                .GetProperty("deltaCount").GetInt32());
+
+            await ExpectError(client.PostAsJsonAsync($"/api/atms/{atmId}/state", new { state = "IN_SERVICE" }),
+                HttpStatusCode.Conflict, "PENDING_RECONCILIATION");
+            await ExpectError(client.PostAsync($"/api/reconciliations/{reconciliationId}/approve", null),
+                HttpStatusCode.Conflict, "SELF_APPROVAL_FORBIDDEN");
+            client.DefaultRequestHeaders.Remove("X-User");
+            client.DefaultRequestHeaders.Add("X-User", "review-officer");
+            var approval = await Read(await client.PostAsync($"/api/reconciliations/{reconciliationId}/approve", null));
+            Assert.Equal("Approved", approval.GetProperty("status").GetString());
+            Assert.Equal("review-officer", approval.GetProperty("approvedBy").GetString());
+            Assert.Equal("IN_SERVICE", (await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/state",
+                new { state = "IN_SERVICE" }))).GetProperty("state").GetString());
+
+            await using var verification = new CashDbContext(options);
+            var reconciliations = await verification.Reconciliations.Include(x => x.Lines)
+                .OrderBy(x => x.CreatedAt).ToListAsync();
+            Assert.Equal([ReconciliationStatus.Completed, ReconciliationStatus.Completed,
+                ReconciliationStatus.Approved], reconciliations.Select(x => x.Status).ToArray());
+            Assert.Equal([999m, 1_000m, 1_001m],
+                reconciliations.Select(x => x.TotalAbsoluteTryDifference).ToArray());
+            Assert.Equal([9.99m, 10m, 10.01m],
+                reconciliations.Select(x => Assert.Single(x.Lines).TryRateSnapshot).ToArray());
+            Assert.Equal(3, await verification.Movements.CountAsync(x =>
+                x.Type == MovementType.RECONCILIATION_ADJUSTMENT));
+        }
+        finally
+        {
+            await using var terminate = new NpgsqlCommand(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = @name AND pid <> pg_backend_pid()", admin);
+            terminate.Parameters.AddWithValue("name", databaseName);
+            await terminate.ExecuteNonQueryAsync();
+            await using var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)", admin);
+            await drop.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public async Task Physical_counts_write_adjustments_and_preserve_rate_snapshot()
     {
         var adminConnection = Environment.GetEnvironmentVariable("ATM_TEST_PG")
@@ -163,6 +261,23 @@ public sealed class ReconciliationIntegrationTests
         lines.Single(x => x.GetProperty("cassetteNumber").GetInt32() == cassetteNumber
             && x.GetProperty("currency").GetString() == currency
             && x.GetProperty("denomination").GetInt32() == denomination);
+
+    private static async Task SetUsdRate(DbContextOptions<CashDbContext> options, decimal rate)
+    {
+        await using var db = new CashDbContext(options);
+        (await db.ExchangeRates.SingleAsync(x => x.Currency == Currency.USD)).TryRate = rate;
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task<JsonElement> Reconcile(HttpClient client, Guid atmId, int usdCount) =>
+        await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/reconciliations", new
+        {
+            cassettes = new[]
+            {
+                Physical(1), Physical(2), Physical(3, PhysicalNote("USD", 100, usdCount)),
+                Physical(4), Physical(5)
+            }
+        }));
 
     private static object Physical(int cassetteNumber, params object[] notes) => new { cassetteNumber, notes };
     private static object PhysicalNote(string currency, int denomination, int count) =>

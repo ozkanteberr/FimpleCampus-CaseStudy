@@ -30,7 +30,7 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G22 | Yatırma sınır testleri | Karma para/duplicate kaset/tam dolu/kısmi kabul | Verified with PostgreSQL 17 mixed-note, duplicate-cassette, full-cassette, and partial-return tests |
 | G23 | Mutabakat kayıt ve fark hesabı | Her kaset/para/kupür sayımı; kur snapshot'ı | Verified with PostgreSQL 17 physical count, adjustment, and rate snapshot integration test |
 | G24 | Second-user reconciliation approval | Differences above 1000 TRY require approval; reject self-approval; block service return until approval | Verified with PostgreSQL integration coverage and all 53 Release tests passing |
-| G25 | Mutabakat sınır testleri | 999/1000/1001, artı/eksi fark, onay akışı | Bekliyor |
+| G25 | Reconciliation boundary tests | Verify 999/1000/1001 TRY, positive and negative differences, and approval flow | Verified with PostgreSQL boundary integration coverage and all 54 Release tests passing |
 | G26 | Ağ ve ATM raporu | Fiziksel/rezerve/kullanılabilir; kurla TRY toplamı | Bekliyor |
 | G27 | Düşük nakit outbox üretimi | 10/9 sınırı; işlemle aynı transaction | Bekliyor |
 | G28 | Outbox hosted service | Olay loglanır/sent; hata sonrası retry | Bekliyor |
