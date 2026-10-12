@@ -116,6 +116,37 @@ public sealed class ReconciliationIntegrationTests
             Assert.Equal(40m, (await db.ReconciliationLines.SingleAsync(x => x.ReconciliationId == reconciliationId
                 && x.Currency == Currency.USD && x.Denomination == 100)).TryRateSnapshot);
             Assert.Equal(7_220m, saved.TotalAbsoluteTryDifference);
+
+            await ExpectError(client.PostAsync($"/api/reconciliations/{Guid.NewGuid()}/approve", null),
+                HttpStatusCode.NotFound, "RECONCILIATION_NOT_FOUND");
+            await ExpectError(client.PostAsync($"/api/reconciliations/{reconciliationId}/approve", null),
+                HttpStatusCode.Conflict, "SELF_APPROVAL_FORBIDDEN");
+            client.DefaultRequestHeaders.Remove("X-User");
+            client.DefaultRequestHeaders.Add("X-User", "COUNT-OFFICER");
+            await ExpectError(client.PostAsync($"/api/reconciliations/{reconciliationId}/approve", null),
+                HttpStatusCode.Conflict, "SELF_APPROVAL_FORBIDDEN");
+            client.DefaultRequestHeaders.Remove("X-User");
+            client.DefaultRequestHeaders.Add("X-User", "review-officer");
+            var approval = await Read(await client.PostAsync($"/api/reconciliations/{reconciliationId}/approve", null));
+            Assert.Equal(reconciliationId, approval.GetProperty("id").GetGuid());
+            Assert.Equal(atmId, approval.GetProperty("atmId").GetGuid());
+            Assert.Equal("Approved", approval.GetProperty("status").GetString());
+            Assert.Equal("review-officer", approval.GetProperty("approvedBy").GetString());
+            Assert.NotEqual(default, approval.GetProperty("approvedAt").GetDateTimeOffset());
+            await ExpectError(client.PostAsync($"/api/reconciliations/{reconciliationId}/approve", null),
+                HttpStatusCode.Conflict, "RECONCILIATION_NOT_PENDING");
+            await db.Entry(saved).ReloadAsync();
+            Assert.Equal(ReconciliationStatus.Approved, saved.Status);
+            Assert.Equal("review-officer", saved.ApprovedBy);
+            Assert.NotNull(saved.ApprovedAt);
+            Assert.Equal(6, await db.Movements.CountAsync(x => x.OperationId == reconciliationId
+                && x.Type == MovementType.RECONCILIATION_ADJUSTMENT));
+
+            var inService = await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/state",
+                new { state = "IN_SERVICE" }));
+            Assert.Equal("IN_SERVICE", inService.GetProperty("state").GetString());
+            Assert.True((await Read(await client.GetAsync($"/api/atms/{atmId}/consistency")))
+                .GetProperty("consistent").GetBoolean());
         }
         finally
         {

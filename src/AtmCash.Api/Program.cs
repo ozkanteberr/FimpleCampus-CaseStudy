@@ -73,6 +73,9 @@ api.MapPost("/atms/{id:guid}/reconciliations", async (Guid id, ReconciliationReq
     HttpContext http, ReconciliationOperations service, CancellationToken ct) =>
     await service.Create(id, request.Cassettes ?? throw new BusinessException("INVALID_REQUEST", "Cassettes list is required.", 400),
         RequestUser(http), ct)).WithName("CreateReconciliation");
+api.MapPost("/reconciliations/{id:guid}/approve", async (Guid id, HttpContext http,
+    ReconciliationOperations service, CancellationToken ct) =>
+    await service.Approve(id, RequestUser(http), ct)).WithName("ApproveReconciliation");
 api.MapGet("/atms/{id:guid}/report", async (Guid id, AtmOperations service, CancellationToken ct) => await service.Report(id, ct));
 api.MapGet("/atms/{id:guid}/consistency", async (Guid id, AtmOperations service, CancellationToken ct) => await service.CheckConsistency(id, ct));
 api.MapGet("/exchange-rates", async (CashDbContext db, CancellationToken ct) => await db.ExchangeRates.AsNoTracking().ToListAsync(ct));
