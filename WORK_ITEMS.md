@@ -13,7 +13,7 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G05 | EF model ve ilk migration | Gerçek PostgreSQL'de temiz migration ve seed | Verified on PostgreSQL 17 |
 | G06 | ATM oluştur/konfigüre/yükle/hizmete al | Gerçek DB üzerinden HTTP akışı + rollback/kapasite testleri | Verified with PostgreSQL 17 HTTP integration test |
 | G07 | Bakım/boşalt/yeniden yapılandır | Yanlış durumda ret; fiziksel stok/movement tutarlılığı | Verified with PostgreSQL 17 maintenance integration test |
-| G08 | Ledger immutable ve consistency | SQL update/delete reddi, doğru/bozuk stok tespiti | Kodlandı / doğrulama bekliyor |
+| G08 | Ledger immutable ve consistency | SQL update/delete reddi, doğru/bozuk stok tespiti | Verified with PostgreSQL 17 ledger and consistency integration test |
 | G09 | Docker, Swagger, ProblemDetails, health | Temiz compose ve gerçek HTTP doğrulaması | Kodlandı / doğrulama bekliyor |
 | G10 | Quote/alternative/reservation modeli | Migration ve reservation toplam kuralları | Bekliyor |
 | G11 | Kart kimliği ve günlük limit modeli | Ham kart saklanmaz; UTC/ağ genelinde limit | Bekliyor |

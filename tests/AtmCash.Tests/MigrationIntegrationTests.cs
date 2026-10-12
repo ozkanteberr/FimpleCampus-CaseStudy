@@ -37,6 +37,10 @@ public sealed class MigrationIntegrationTests
             var cassette = new Cassette { AtmId = atm.Id, Number = 1, Kind = CassetteKind.Recycling, Currency = Currency.TRY, Denomination = 100 };
             db.Atms.Add(atm);
             db.Cassettes.Add(cassette);
+            db.Stocks.Add(new CassetteStock
+            {
+                CassetteId = cassette.Id, Currency = Currency.TRY, Denomination = 100, Count = 1
+            });
             await db.SaveChangesAsync();
 
             var movementId = Guid.NewGuid();
@@ -54,6 +58,54 @@ public sealed class MigrationIntegrationTests
             update.Parameters.AddWithValue("id", movementId);
             var failure = await Assert.ThrowsAsync<PostgresException>(() => update.ExecuteNonQueryAsync());
             Assert.Equal("23514", failure.SqlState);
+
+            await using var delete = new NpgsqlCommand("DELETE FROM \"Movements\" WHERE \"Id\" = @id", client);
+            delete.Parameters.AddWithValue("id", movementId);
+            failure = await Assert.ThrowsAsync<PostgresException>(() => delete.ExecuteNonQueryAsync());
+            Assert.Equal("23514", failure.SqlState);
+
+            await using var truncate = new NpgsqlCommand("TRUNCATE TABLE \"Movements\"", client);
+            failure = await Assert.ThrowsAsync<PostgresException>(() => truncate.ExecuteNonQueryAsync());
+            Assert.Equal("23514", failure.SqlState);
+            Assert.Equal(1, await db.Movements.CountAsync());
+
+            await using (var checkDb = new CashDbContext(options))
+            {
+                var consistent = await new AtmOperations(checkDb, TimeProvider.System).CheckConsistency(atm.Id, default);
+                Assert.True(consistent.Consistent);
+                Assert.Empty(consistent.Differences);
+            }
+
+            await using var corrupt = new NpgsqlCommand(
+                "UPDATE \"Stocks\" SET \"Count\" = 2, \"Reserved\" = 1 WHERE \"CassetteId\" = @id", client);
+            corrupt.Parameters.AddWithValue("id", cassette.Id);
+            Assert.Equal(1, await corrupt.ExecuteNonQueryAsync());
+            await using (var checkDb = new CashDbContext(options))
+            {
+                var inconsistent = await new AtmOperations(checkDb, TimeProvider.System).CheckConsistency(atm.Id, default);
+                Assert.False(inconsistent.Consistent);
+                var difference = Assert.Single(inconsistent.Differences);
+                Assert.Equal(1, difference.CassetteNumber);
+                Assert.Equal(Currency.TRY, difference.Currency);
+                Assert.Equal(100, difference.Denomination);
+                Assert.Equal(2, difference.StoredCount);
+                Assert.Equal(1, difference.LedgerCount);
+                Assert.Equal(1, difference.StoredReserved);
+                Assert.Equal(0, difference.LedgerReserved);
+            }
+
+            await using var missingStock = new NpgsqlCommand(
+                "DELETE FROM \"Stocks\" WHERE \"CassetteId\" = @id", client);
+            missingStock.Parameters.AddWithValue("id", cassette.Id);
+            Assert.Equal(1, await missingStock.ExecuteNonQueryAsync());
+            await using (var checkDb = new CashDbContext(options))
+            {
+                var inconsistent = await new AtmOperations(checkDb, TimeProvider.System).CheckConsistency(atm.Id, default);
+                Assert.False(inconsistent.Consistent);
+                var difference = Assert.Single(inconsistent.Differences);
+                Assert.Equal(0, difference.StoredCount);
+                Assert.Equal(1, difference.LedgerCount);
+            }
         }
         finally
         {
