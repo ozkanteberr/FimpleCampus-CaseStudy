@@ -119,9 +119,33 @@ public sealed class AtmOperations(CashDbContext db, TimeProvider clock)
     public async Task<AtmSummary> ChangeState(Guid id, AtmState target, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        if (target == AtmState.MAINTENANCE)
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock(hashtextextended({"atm-state:" + id}, 0))", ct);
+            var fingerprints = await db.WithdrawalQuotes.AsNoTracking()
+                .Where(x => x.AtmId == id && x.Status == WithdrawalQuoteStatus.Active
+                    && x.CardFingerprint != null)
+                .Select(x => x.CardFingerprint!).Distinct().OrderBy(x => x).ToArrayAsync(ct);
+            foreach (var fingerprint in fingerprints)
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT pg_advisory_xact_lock(hashtextextended({"card:" + fingerprint}, 0))", ct);
+        }
         await Lock(id, ct);
         var atm = await Find(id, ct);
         CashRules.ValidateTransition(atm.State, target);
+        if (target == AtmState.MAINTENANCE)
+        {
+            var activeQuotes = await db.WithdrawalQuotes.Include(x => x.Reservations)
+                .Where(x => x.AtmId == id && x.Status == WithdrawalQuoteStatus.Active)
+                .OrderBy(x => x.Id).ToListAsync(ct);
+            var now = clock.GetUtcNow();
+            foreach (var quote in activeQuotes)
+            {
+                await QuoteReservationReleaser.Release(db, quote, now, ct);
+                quote.Status = WithdrawalQuoteStatus.Cancelled;
+            }
+        }
         if (target == AtmState.IN_SERVICE)
         {
             CashRules.ValidateConfiguration(atm.Cassettes.Select(x => new CassetteDefinition(x.Number, x.Kind, x.Currency, x.Denomination)).ToArray());

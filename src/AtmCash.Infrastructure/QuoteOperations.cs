@@ -23,6 +23,8 @@ public sealed class QuoteOperations(CashDbContext db, TimeProvider clock, CardId
         CashRules.Require(requestedAmount > 0, "INVALID_AMOUNT", "Withdrawal amount must be positive.");
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({"atm-state:" + atmId}, 0))", ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({"card:" + cardFingerprint}, 0))", ct);
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({"atm:" + atmId}, 0))", ct);
