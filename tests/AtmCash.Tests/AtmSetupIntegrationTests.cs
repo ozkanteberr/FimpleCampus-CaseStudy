@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using AtmCash.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -10,6 +12,81 @@ namespace AtmCash.Tests;
 
 public sealed class AtmSetupIntegrationTests
 {
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Low_cash_event_is_persisted_with_reservation_on_threshold_crossing()
+    {
+        var adminConnection = Environment.GetEnvironmentVariable("ATM_TEST_PG")
+            ?? "Host=127.0.0.1;Port=55432;Database=postgres;Username=atm_app;Password=atm_local_password";
+        var databaseName = "atm_low_cash_test_" + Guid.NewGuid().ToString("N");
+        await using var admin = new NpgsqlConnection(adminConnection);
+        await admin.OpenAsync();
+        try
+        {
+            await using (var create = new NpgsqlCommand($"CREATE DATABASE \"{databaseName}\"", admin))
+                await create.ExecuteNonQueryAsync();
+            var testConnection = new NpgsqlConnectionStringBuilder(adminConnection) { Database = databaseName }.ConnectionString;
+            await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
+                web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:CashDb"] = testConnection,
+                    ["CardIdentity:HmacKey"] = "integration-test-card-hmac-key-with-32-bytes"
+                })));
+            using var client = factory.CreateClient();
+            client.DefaultRequestHeaders.Add("X-User", "setup-officer");
+            var atmId = (await Read(await client.PostAsJsonAsync("/api/atms", new { name = "Low Cash ATM" })))
+                .GetProperty("id").GetGuid();
+            await Read(await client.PutAsJsonAsync($"/api/atms/{atmId}/configuration", new
+            {
+                cassettes = new[]
+                {
+                    Cassette(1, "Recycling", "TRY", 100), Cassette(2, "Recycling", "TRY", 20),
+                    Cassette(3, "Recycling", "USD", 100), Cassette(4, "Recycling", "EUR", 100),
+                    Cassette(5, "DepositOnly", null, null)
+                }
+            }));
+            await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/load",
+                new { notes = new[] { Note(1, "TRY", 100, 10) } }));
+            await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/state", new { state = "IN_SERVICE" }));
+            var options = new DbContextOptionsBuilder<CashDbContext>().UseNpgsql(testConnection).Options;
+            await using var db = new CashDbContext(options);
+            Assert.Empty(await db.Outbox.ToListAsync());
+
+            await ExpectError(client.PostAsJsonAsync($"/api/atms/{atmId}/quotes",
+                new { cardNumber = "4111111111111111", currency = "TRY", amount = 0 }),
+                HttpStatusCode.UnprocessableEntity, "INVALID_AMOUNT");
+            Assert.Empty(await db.Outbox.ToListAsync());
+
+            var firstQuote = await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/quotes",
+                new { cardNumber = "4111111111111111", currency = "TRY", amount = 100 }));
+            var cassette = (await db.Cassettes.SingleAsync(x => x.AtmId == atmId && x.Number == 1));
+            var stock = await db.Stocks.SingleAsync(x => x.CassetteId == cassette.Id);
+            Assert.Equal(10, stock.Count);
+            Assert.Equal(1, stock.Reserved);
+            var events = await db.Outbox.ToListAsync();
+            var alert = Assert.Single(events);
+            Assert.Equal("LOW_CASH", alert.Type);
+            Assert.Null(alert.SentAt);
+            Assert.Equal(atmId, alert.AtmId);
+            Assert.Equal(9, JsonDocument.Parse(alert.Payload).RootElement.GetProperty("availableCount").GetInt32());
+
+            await Read(await client.PostAsync($"/api/quotes/{firstQuote.GetProperty("id").GetGuid()}/cancel", null));
+            Assert.Single(await db.Outbox.ToListAsync());
+            await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/quotes",
+                new { cardNumber = "4111111111111111", currency = "TRY", amount = 100 }));
+            Assert.Equal(2, await db.Outbox.CountAsync());
+        }
+        finally
+        {
+            await using var terminate = new NpgsqlCommand(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = @name AND pid <> pg_backend_pid()", admin);
+            terminate.Parameters.AddWithValue("name", databaseName);
+            await terminate.ExecuteNonQueryAsync();
+            await using var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)", admin);
+            await drop.ExecuteNonQueryAsync();
+        }
+    }
+
     [Fact]
     [Trait("Category", "Integration")]
     public async Task Atm_setup_enforces_lifecycle_capacity_and_atomic_loading()

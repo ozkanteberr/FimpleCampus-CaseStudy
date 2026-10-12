@@ -32,7 +32,7 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G24 | Second-user reconciliation approval | Differences above 1000 TRY require approval; reject self-approval; block service return until approval | Verified with PostgreSQL integration coverage and all 53 Release tests passing |
 | G25 | Reconciliation boundary tests | Verify 999/1000/1001 TRY, positive and negative differences, and approval flow | Verified with PostgreSQL boundary integration coverage and all 54 Release tests passing |
 | G26 | ATM and network reporting | Physical, reserved, and available counts; currency and converted TRY totals | Verified with two-ATM PostgreSQL report integration coverage |
-| G27 | Düşük nakit outbox üretimi | 10/9 sınırı; işlemle aynı transaction | Bekliyor |
+| G27 | Low-cash outbox creation | Available recycling notes cross from 10 to 9; event shares the stock transaction | Verified with PostgreSQL reservation, rejected-request, and re-arming integration test |
 | G28 | Outbox hosted service | Olay loglanır/sent; hata sonrası retry | Bekliyor |
 | G29 | Postman collection/environment | ID aktarımı ve bütün sıralı senaryo | Bekliyor |
 | G30 | Hata ve API sözleşmesi incelemesi | Null/invalid/header/durum için ProblemDetails | Bekliyor |

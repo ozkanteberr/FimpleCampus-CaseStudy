@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AtmCash.Domain;
 using Microsoft.EntityFrameworkCore;
 
@@ -136,10 +137,45 @@ public sealed class CashDbContext(DbContextOptions<CashDbContext> options) : DbC
         model.Entity<OutboxEvent>().Property(x => x.Payload).HasColumnType("jsonb");
     }
 
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         if (ChangeTracker.Entries<Movement>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Movement records are immutable.");
-        return base.SaveChangesAsync(cancellationToken);
+        var changedStocks = ChangeTracker.Entries<CassetteStock>()
+            .Where(x => x.State is EntityState.Added or EntityState.Modified)
+            .ToArray();
+        var cassetteIds = changedStocks.Select(x => x.Entity.CassetteId).Distinct().ToArray();
+        if (cassetteIds.Length > 0)
+        {
+            var cassettes = await Cassettes.AsNoTracking()
+                .Where(x => cassetteIds.Contains(x.Id))
+                .Select(x => new { x.Id, x.AtmId, x.Number, x.Kind, x.Currency, x.Denomination })
+                .ToDictionaryAsync(x => x.Id, cancellationToken);
+            foreach (var entry in changedStocks)
+            {
+                if (!cassettes.TryGetValue(entry.Entity.CassetteId, out var cassette)
+                    || cassette.Kind != CassetteKind.Recycling) continue;
+                var before = entry.State == EntityState.Added ? 0
+                    : entry.OriginalValues.GetValue<int>(nameof(CassetteStock.Count))
+                      - entry.OriginalValues.GetValue<int>(nameof(CassetteStock.Reserved));
+                var after = entry.Entity.Count - entry.Entity.Reserved;
+                if ((before >= 10 && after < 10)
+                    || (entry.State == EntityState.Added && after is > 0 and < 10))
+                    Outbox.Add(new OutboxEvent
+                    {
+                        AtmId = cassette.AtmId,
+                        CassetteId = cassette.Id,
+                        Payload = JsonSerializer.Serialize(new
+                        {
+                            atmId = cassette.AtmId, cassetteId = cassette.Id,
+                            cassetteNumber = cassette.Number, currency = cassette.Currency,
+                            denomination = cassette.Denomination, availableCount = after,
+                            capacity = CashRules.Capacity
+                        }),
+                        CreatedAt = DateTimeOffset.UtcNow
+                    });
+            }
+        }
+        return await base.SaveChangesAsync(cancellationToken);
     }
 }
