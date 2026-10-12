@@ -18,7 +18,7 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G10 | Quote/alternative/reservation modeli | Migration ve reservation toplam kuralları | Verified with PostgreSQL 17 migration and reservation rule tests |
 | G11 | Kart kimliği ve günlük limit modeli | Ham kart saklanmaz; UTC/ağ genelinde limit | Verified with HMAC, UTC, and PostgreSQL network limit tests |
 | G12 | Quote endpoint | Tam/alt/üst ve kaset bazında birleşik rezervasyon | Verified with PostgreSQL 17 quote and reservation HTTP integration test |
-| G13 | Aynı kupürlü kasetlerden çekim | Daha dolu kaset önce; kapasite/stok aşılmaz | Bekliyor |
+| G13 | Aynı kupürlü kasetlerden çekim | Daha dolu kaset önce; kapasite/stok aşılmaz | Verified with PostgreSQL 17 duplicate-cassette quote integration test |
 | G14 | Confirm | Seçilen alternatif debit; kalan rezervasyon bırakılır | Bekliyor |
 | G15 | Confirm idempotency | Duplicate aynı response/tek debit; farklı payload 409 | Bekliyor |
 | G16 | Cancel | Nakit ve kart limiti rezervasyonu bırakılır | Bekliyor |
