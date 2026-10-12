@@ -18,6 +18,7 @@ services:
     build: .
     environment:
       ConnectionStrings__CashDb: "Host=db;Port=5432;Database=atm_cash;Username=atm_app;Password=atm_local_password"
+      CardIdentity__HmacKey: ${CARD_HMAC_KEY:-local-development-only-card-hmac-key-change-before-production}
       ASPNETCORE_ENVIRONMENT: Development
     ports:
       - "127.0.0.1:5080:8080"

@@ -12,8 +12,11 @@ builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddOpenApi();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<NoteSelector>();
+builder.Services.AddSingleton(sp => new CardIdentity(sp.GetRequiredService<IConfiguration>()["CardIdentity:HmacKey"]
+    ?? throw new InvalidOperationException("CardIdentity:HmacKey must be configured.")));
 builder.Services.AddDbContext<CashDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("CashDb")));
 builder.Services.AddScoped<AtmOperations>();
+builder.Services.AddScoped<QuoteOperations>();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgresql");
 
 var app = builder.Build();
@@ -53,6 +56,8 @@ api.MapPost("/atms/{id:guid}/unload", async (Guid id, CashRequest request, HttpC
     await service.MoveCash(id, request.Notes ?? throw new BusinessException("INVALID_REQUEST", "Notes list is required.", 400), false, RequestUser(http), ct));
 api.MapPost("/atms/{id:guid}/state", async (Guid id, StateRequest request, AtmOperations service, CancellationToken ct) =>
     await service.ChangeState(id, request.State, ct));
+api.MapPost("/atms/{id:guid}/quotes", async (Guid id, QuoteRequest request, QuoteOperations service, CancellationToken ct) =>
+    await service.Create(id, request.CardNumber, request.Currency, request.Amount, ct)).WithName("CreateQuote");
 api.MapGet("/atms/{id:guid}/report", async (Guid id, AtmOperations service, CancellationToken ct) => await service.Report(id, ct));
 api.MapGet("/atms/{id:guid}/consistency", async (Guid id, AtmOperations service, CancellationToken ct) => await service.CheckConsistency(id, ct));
 api.MapGet("/exchange-rates", async (CashDbContext db, CancellationToken ct) => await db.ExchangeRates.AsNoTracking().ToListAsync(ct));
@@ -74,6 +79,7 @@ public sealed record CreateAtmRequest(string Name);
 public sealed record ConfigurationRequest(List<CassetteDefinition> Cassettes);
 public sealed record CashRequest(List<CashEntry> Notes);
 public sealed record StateRequest(AtmState State);
+public sealed record QuoteRequest(string CardNumber, Currency Currency, int Amount);
 
 public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<ApiExceptionHandler> logger) : IExceptionHandler
 {

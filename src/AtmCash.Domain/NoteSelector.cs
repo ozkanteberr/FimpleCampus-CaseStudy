@@ -12,7 +12,7 @@ public sealed class NoteSelector
     public NoteSelection Select(IReadOnlyDictionary<int, int> stock, int requested, int remainingLimit = int.MaxValue)
     {
         CashRules.Require(requested > 0, "INVALID_AMOUNT", "Withdrawal amount must be a positive integer.");
-        CashRules.Require(remainingLimit >= requested, "DAILY_LIMIT_EXCEEDED", "Requested amount exceeds the remaining daily limit.");
+        CashRules.Require(remainingLimit >= requested, "DAILY_LIMIT_EXCEEDED", "Requested amount exceeds the remaining daily limit.", 409);
         foreach (var (denomination, count) in stock)
         {
             CashRules.ValidateNote(Currency.TRY, denomination);
