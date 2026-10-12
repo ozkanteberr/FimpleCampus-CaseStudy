@@ -37,7 +37,11 @@ app.UseStatusCodePages(async context =>
         {
             Status = context.HttpContext.Response.StatusCode,
             Title = "Request could not be processed.",
-            Extensions = { ["code"] = "HTTP_" + context.HttpContext.Response.StatusCode }
+            Extensions =
+            {
+                ["code"] = "HTTP_" + context.HttpContext.Response.StatusCode,
+                ["traceId"] = context.HttpContext.TraceIdentifier
+            }
         }
     });
 });
@@ -61,7 +65,7 @@ api.MapPost("/atms/{id:guid}/load", async (Guid id, CashRequest request, HttpCon
 api.MapPost("/atms/{id:guid}/unload", async (Guid id, CashRequest request, HttpContext http, AtmOperations service, CancellationToken ct) =>
     await service.MoveCash(id, request.Notes ?? throw new BusinessException("INVALID_REQUEST", "Notes list is required.", 400), false, RequestUser(http), ct));
 api.MapPost("/atms/{id:guid}/state", async (Guid id, StateRequest request, AtmOperations service, CancellationToken ct) =>
-    await service.ChangeState(id, request.State, ct));
+    await service.ChangeState(id, request.State ?? throw new BusinessException("INVALID_REQUEST", "State is required.", 400), ct));
 api.MapPost("/atms/{id:guid}/quotes", async (Guid id, QuoteRequest request, QuoteOperations service, CancellationToken ct) =>
     await service.Create(id, request.CardNumber, request.Currency, request.Amount, ct)).WithName("CreateQuote");
 api.MapPost("/quotes/{id:guid}/confirm", async (Guid id, ConfirmQuoteRequest request, HttpContext http, QuoteOperations service, CancellationToken ct) =>
@@ -99,7 +103,7 @@ static string RequestUser(HttpContext http)
 public sealed record CreateAtmRequest(string Name);
 public sealed record ConfigurationRequest(List<CassetteDefinition> Cassettes);
 public sealed record CashRequest(List<CashEntry> Notes);
-public sealed record StateRequest(AtmState State);
+public sealed record StateRequest(AtmState? State);
 public sealed record QuoteRequest(string CardNumber, Currency Currency, int Amount);
 public sealed record ConfirmQuoteRequest(Guid AlternativeId);
 public sealed record DepositRequest(List<DepositEntry> Notes, int UnrecognisedCount);

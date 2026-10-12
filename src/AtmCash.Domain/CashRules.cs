@@ -39,6 +39,7 @@ public static class CashRules
 
     public static void ValidateConfiguration(IReadOnlyList<CassetteDefinition> definitions)
     {
+        Require(!definitions.Any(x => x is null), "INVALID_CONFIGURATION", "Cassette definitions cannot contain null entries.");
         Require(definitions.Count == 5 && definitions.Select(x => x.Number).Order().SequenceEqual(new[] { 1, 2, 3, 4, 5 }),
             "INVALID_CONFIGURATION", "Exactly five cassettes numbered 1 through 5 are required.");
         Require(definitions.Count(x => x.Kind == CassetteKind.DepositOnly) == 1

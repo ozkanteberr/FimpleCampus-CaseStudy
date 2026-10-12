@@ -74,6 +74,7 @@ public sealed class AtmOperations(CashDbContext db, TimeProvider clock)
 
     public async Task<AtmSummary> MoveCash(Guid id, IReadOnlyList<CashEntry> entries, bool load, string user, CancellationToken ct)
     {
+        CashRules.Require(!entries.Any(x => x is null), "INVALID_CASH_ENTRY", "Cash entries cannot contain null values.");
         CashRules.Require(entries.Count > 0, "EMPTY_CASH_LIST", "At least one cash entry is required.");
         CashRules.Require(entries.Select(x => (x.CassetteNumber, x.Currency, x.Denomination)).Distinct().Count() == entries.Count,
             "DUPLICATE_CASH_ENTRY", "Duplicate cassette/currency/denomination entries are not allowed.");

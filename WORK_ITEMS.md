@@ -35,10 +35,10 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G27 | Low-cash outbox creation | Available recycling notes cross from 10 to 9; event shares the stock transaction | Verified with PostgreSQL reservation, rejected-request, and re-arming integration test |
 | G28 | Outbox hosted service | Log pending events, mark sent, and retry after failure | Verified with PostgreSQL retry and hosted-worker integration tests |
 | G29 | Postman collection/environment | Pass IDs through the complete ordered end-to-end scenario | Verified: 22 Newman requests passed against the current API and PostgreSQL 17 |
-| G30 | Hata ve API sözleşmesi incelemesi | Null/invalid/header/durum için ProblemDetails | Bekliyor |
+| G30 | Error and API contract review | ProblemDetails for null, invalid, missing-header, and state-conflict requests | Verified with PostgreSQL API integration coverage and all 56 Release tests passing |
 | G31 | Temiz Docker ve tam test koşusu | Release + tüm unit/integration + E2E geçer | Bekliyor |
 | G32 | README, izlenebilirlik ve teslim | Gerçek durum, varsayımlar, AI beyanı, Git/ZIP | Bekliyor |
 
 ## Next atomic step
 
-G30: review error cases and API contracts for null or invalid input, required headers, state conflicts, and consistent ProblemDetails responses.
+G31: rebuild a clean Docker stack and run the full Release suite plus the ordered Postman scenario against it.

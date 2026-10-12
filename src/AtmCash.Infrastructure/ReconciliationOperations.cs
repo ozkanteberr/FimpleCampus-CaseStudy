@@ -20,6 +20,7 @@ public sealed class ReconciliationOperations(CashDbContext db, TimeProvider cloc
     public async Task<ReconciliationResult> Create(Guid atmId, IReadOnlyList<CassettePhysicalCount> counts,
         string user, CancellationToken ct)
     {
+        CashRules.Require(!counts.Any(x => x is null), "INVALID_PHYSICAL_COUNT", "Cassette counts cannot contain null values.");
         CashRules.Require(counts.Count == 5 && counts.Select(x => x.CassetteNumber).Order()
             .SequenceEqual(new[] { 1, 2, 3, 4, 5 }),
             "INVALID_PHYSICAL_COUNT", "Physical counts for all five cassettes are required.");
@@ -27,6 +28,7 @@ public sealed class ReconciliationOperations(CashDbContext db, TimeProvider cloc
         {
             var notes = cassette.Notes ?? throw new BusinessException("INVALID_PHYSICAL_COUNT",
                 "Each cassette requires a notes list.");
+            CashRules.Require(!notes.Any(x => x is null), "INVALID_PHYSICAL_COUNT", "Physical notes cannot contain null values.");
             CashRules.Require(notes.Select(x => (x.Currency, x.Denomination)).Distinct().Count()
                 == notes.Count, "DUPLICATE_PHYSICAL_NOTE", "Duplicate note counts are not allowed.");
             foreach (var note in notes)

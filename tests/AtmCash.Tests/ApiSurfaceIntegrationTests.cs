@@ -53,6 +53,48 @@ public sealed class ApiSurfaceIntegrationTests
                 HttpStatusCode.UnprocessableEntity, "INVALID_NAME");
             await AssertProblem(await client.PostAsync("/api/atms", new StringContent("{", System.Text.Encoding.UTF8, "application/json")),
                 HttpStatusCode.BadRequest, "INVALID_REQUEST");
+            await AssertProblem(await client.PostAsync("/api/atms", new StringContent("{}", System.Text.Encoding.UTF8, "text/plain")),
+                HttpStatusCode.UnsupportedMediaType, "HTTP_415");
+            await AssertProblem(await client.GetAsync($"/api/quotes/{Guid.NewGuid()}/cancel"),
+                HttpStatusCode.MethodNotAllowed, "HTTP_405");
+
+            var created = await client.PostAsJsonAsync("/api/atms", new { name = "Contract ATM" });
+            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+            using var atm = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+            var atmId = atm.RootElement.GetProperty("id").GetGuid();
+
+            await AssertProblem(await client.PostAsJsonAsync($"/api/atms/{atmId}/state", new { }),
+                HttpStatusCode.BadRequest, "INVALID_REQUEST");
+            await AssertProblem(await client.PostAsJsonAsync($"/api/atms/{atmId}/state", new { state = "UNKNOWN" }),
+                HttpStatusCode.BadRequest, "INVALID_REQUEST");
+            await AssertProblem(await client.PostAsJsonAsync($"/api/atms/{atmId}/state", new { state = "IN_SERVICE" }),
+                HttpStatusCode.Conflict, "INVALID_STATE_TRANSITION");
+            await AssertProblem(await client.PutAsJsonAsync($"/api/atms/{atmId}/configuration",
+                new { cassettes = new object?[] { null, null, null, null, null } }),
+                HttpStatusCode.UnprocessableEntity, "INVALID_CONFIGURATION");
+            await AssertProblem(await client.PostAsJsonAsync($"/api/atms/{atmId}/load",
+                new { notes = new object?[] { null } }),
+                HttpStatusCode.BadRequest, "INVALID_USER");
+            client.DefaultRequestHeaders.Add("X-User", "contract-officer");
+            await AssertProblem(await client.PostAsJsonAsync($"/api/atms/{atmId}/load",
+                new { notes = new object?[] { null } }),
+                HttpStatusCode.UnprocessableEntity, "INVALID_CASH_ENTRY");
+            await AssertProblem(await client.PostAsJsonAsync($"/api/atms/{atmId}/deposits",
+                new { notes = new object?[] { null }, unrecognisedCount = 0 }),
+                HttpStatusCode.UnprocessableEntity, "INVALID_DEPOSIT_NOTE");
+            await AssertProblem(await client.PostAsJsonAsync($"/api/atms/{atmId}/reconciliations",
+                new { cassettes = new object?[] { null, null, null, null, null } }),
+                HttpStatusCode.UnprocessableEntity, "INVALID_PHYSICAL_COUNT");
+            await AssertProblem(await client.PostAsJsonAsync($"/api/atms/{atmId}/reconciliations",
+                new { cassettes = Enumerable.Range(1, 5).Select(number => new
+                {
+                    cassetteNumber = number,
+                    notes = number == 1 ? new object?[] { null } : Array.Empty<object>()
+                }) }),
+                HttpStatusCode.UnprocessableEntity, "INVALID_PHYSICAL_COUNT");
+            await AssertProblem(await client.PostAsJsonAsync($"/api/quotes/{Guid.NewGuid()}/confirm",
+                new { alternativeId = Guid.NewGuid() }),
+                HttpStatusCode.BadRequest, "INVALID_IDEMPOTENCY_KEY");
         }
         finally
         {
@@ -70,6 +112,9 @@ public sealed class ApiSurfaceIntegrationTests
         Assert.Equal(status, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal((int)status, document.RootElement.GetProperty("status").GetInt32());
+        Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("title").GetString()));
         Assert.Equal(code, document.RootElement.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("traceId").GetString()));
     }
 }

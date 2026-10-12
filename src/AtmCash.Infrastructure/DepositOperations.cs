@@ -15,6 +15,7 @@ public sealed class DepositOperations(CashDbContext db, TimeProvider clock)
     public async Task<DepositResult> Deposit(Guid atmId, IReadOnlyList<DepositEntry> notes,
         int unrecognisedCount, CancellationToken ct)
     {
+        CashRules.Require(!notes.Any(x => x is null), "INVALID_DEPOSIT_NOTE", "Deposit notes cannot contain null values.");
         CashRules.Require(unrecognisedCount >= 0, "INVALID_COUNT", "Unrecognised count cannot be negative.");
         CashRules.Require(notes.Count > 0 || unrecognisedCount > 0,
             "EMPTY_DEPOSIT", "At least one banknote is required.");
