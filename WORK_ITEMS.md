@@ -22,7 +22,7 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G14 | Confirm | Seçilen alternatif debit; kalan rezervasyon bırakılır | Verified with PostgreSQL 17 confirmation and release integration tests |
 | G15 | Confirm idempotency | Duplicate aynı response/tek debit; farklı payload 409 | Verified with concurrent PostgreSQL 17 confirmation replay and conflict tests |
 | G16 | Cancel | Nakit ve kart limiti rezervasyonu bırakılır | Verified with PostgreSQL 17 cancellation and reservation release integration test |
-| G17 | Expiry hosted service | 60 saniye sonra otomatik bırakma; geç onay reddi | Bekliyor |
+| G17 | Expiry hosted service | 60 saniye sonra otomatik bırakma; geç onay reddi | Verified with PostgreSQL 17 automatic expiry and late-confirm integration test |
 | G18 | Bakım ve teklifler | Bakıma geçiş aktif teklifleri iptal eder | Bekliyor |
 | G19 | Eş zamanlı ATM teklif testi | Paralel HTTP istekleri aynı banknotu iki kez ayıramaz | Bekliyor |
 | G20 | Eş zamanlı kart/ağ limiti testi | Farklı ATM'lerde aynı kartın toplamı limiti aşmaz | Bekliyor |

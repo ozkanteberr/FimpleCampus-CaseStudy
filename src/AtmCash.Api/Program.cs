@@ -17,6 +17,8 @@ builder.Services.AddSingleton(sp => new CardIdentity(sp.GetRequiredService<IConf
 builder.Services.AddDbContext<CashDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("CashDb")));
 builder.Services.AddScoped<AtmOperations>();
 builder.Services.AddScoped<QuoteOperations>();
+builder.Services.AddScoped<QuoteExpiryOperations>();
+builder.Services.AddHostedService<QuoteExpiryWorker>();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgresql");
 
 var app = builder.Build();
