@@ -31,7 +31,9 @@ public sealed class MigrationIntegrationTests
             Assert.Equal(1, await db.ExchangeRates.Where(x => x.Currency == Currency.TRY).Select(x => x.TryRate).SingleAsync());
             Assert.Equal(40, await db.ExchangeRates.Where(x => x.Currency == Currency.USD).Select(x => x.TryRate).SingleAsync());
             Assert.Equal(45, await db.ExchangeRates.Where(x => x.Currency == Currency.EUR).Select(x => x.TryRate).SingleAsync());
-            Assert.Single(await db.Database.GetAppliedMigrationsAsync());
+            var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
+            Assert.Contains(appliedMigrations, x => x.EndsWith("_InitialCashManagement"));
+            Assert.Contains(appliedMigrations, x => x.EndsWith("_QuoteReservations"));
 
             var atm = new Atm { Name = "Migration test" };
             var cassette = new Cassette { AtmId = atm.Id, Number = 1, Kind = CassetteKind.Recycling, Currency = Currency.TRY, Denomination = 100 };

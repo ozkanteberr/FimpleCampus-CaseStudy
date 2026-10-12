@@ -9,6 +9,10 @@ public sealed class CashDbContext(DbContextOptions<CashDbContext> options) : DbC
     public DbSet<Cassette> Cassettes => Set<Cassette>();
     public DbSet<CassetteStock> Stocks => Set<CassetteStock>();
     public DbSet<Movement> Movements => Set<Movement>();
+    public DbSet<WithdrawalQuote> WithdrawalQuotes => Set<WithdrawalQuote>();
+    public DbSet<WithdrawalAlternative> WithdrawalAlternatives => Set<WithdrawalAlternative>();
+    public DbSet<WithdrawalAllocation> WithdrawalAllocations => Set<WithdrawalAllocation>();
+    public DbSet<WithdrawalReservation> WithdrawalReservations => Set<WithdrawalReservation>();
     public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
     public DbSet<OutboxEvent> Outbox => Set<OutboxEvent>();
 
@@ -34,6 +38,43 @@ public sealed class CashDbContext(DbContextOptions<CashDbContext> options) : DbC
         model.Entity<Movement>().Property(x => x.User).HasMaxLength(100);
         model.Entity<Movement>().HasIndex(x => new { x.CassetteId, x.CreatedAt });
         model.Entity<Movement>().HasOne<Cassette>().WithMany().HasForeignKey(x => x.CassetteId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<WithdrawalQuote>().Property(x => x.Currency).HasConversion<string>();
+        model.Entity<WithdrawalQuote>().Property(x => x.Status).HasConversion<string>();
+        model.Entity<WithdrawalQuote>().HasOne<Atm>().WithMany().HasForeignKey(x => x.AtmId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<WithdrawalQuote>().HasIndex(x => new { x.Status, x.ExpiresAt });
+        model.Entity<WithdrawalQuote>().ToTable(t =>
+        {
+            t.HasCheckConstraint("CK_WithdrawalQuote_Amount", "\"RequestedAmount\" > 0");
+            t.HasCheckConstraint("CK_WithdrawalQuote_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
+        });
+        model.Entity<WithdrawalAlternative>().Property(x => x.Kind).HasConversion<string>();
+        model.Entity<WithdrawalAlternative>().HasOne<WithdrawalQuote>().WithMany(x => x.Alternatives)
+            .HasForeignKey(x => x.QuoteId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<WithdrawalAlternative>().HasIndex(x => new { x.QuoteId, x.Kind }).IsUnique();
+        model.Entity<WithdrawalAlternative>().ToTable(t =>
+            t.HasCheckConstraint("CK_WithdrawalAlternative_Amount", "\"Amount\" > 0"));
+        model.Entity<WithdrawalAllocation>().HasKey(x => new { x.AlternativeId, x.CassetteId, x.Currency, x.Denomination });
+        model.Entity<WithdrawalAllocation>().Property(x => x.Currency).HasConversion<string>();
+        model.Entity<WithdrawalAllocation>().HasOne<WithdrawalAlternative>().WithMany(x => x.Allocations)
+            .HasForeignKey(x => x.AlternativeId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<WithdrawalAllocation>().HasOne<Cassette>().WithMany()
+            .HasForeignKey(x => x.CassetteId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<WithdrawalAllocation>().ToTable(t =>
+        {
+            t.HasCheckConstraint("CK_WithdrawalAllocation_Count", "\"Count\" BETWEEN 1 AND 100");
+            t.HasCheckConstraint("CK_WithdrawalAllocation_Note", "\"Currency\" IN ('TRY','USD','EUR') AND \"Denomination\" IN (20,50,100,500)");
+        });
+        model.Entity<WithdrawalReservation>().HasKey(x => new { x.QuoteId, x.CassetteId, x.Currency, x.Denomination });
+        model.Entity<WithdrawalReservation>().Property(x => x.Currency).HasConversion<string>();
+        model.Entity<WithdrawalReservation>().HasOne<WithdrawalQuote>().WithMany(x => x.Reservations)
+            .HasForeignKey(x => x.QuoteId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<WithdrawalReservation>().HasOne<Cassette>().WithMany()
+            .HasForeignKey(x => x.CassetteId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<WithdrawalReservation>().ToTable(t =>
+        {
+            t.HasCheckConstraint("CK_WithdrawalReservation_Count", "\"Count\" BETWEEN 1 AND 100");
+            t.HasCheckConstraint("CK_WithdrawalReservation_Note", "\"Currency\" IN ('TRY','USD','EUR') AND \"Denomination\" IN (20,50,100,500)");
+        });
         model.Entity<ExchangeRate>().HasKey(x => x.Currency);
         model.Entity<ExchangeRate>().Property(x => x.Currency).HasConversion<string>();
         model.Entity<ExchangeRate>().Property(x => x.TryRate).HasPrecision(18, 6);
