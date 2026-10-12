@@ -19,6 +19,7 @@ builder.Services.AddScoped<AtmOperations>();
 builder.Services.AddScoped<QuoteOperations>();
 builder.Services.AddScoped<QuoteExpiryOperations>();
 builder.Services.AddScoped<DepositOperations>();
+builder.Services.AddScoped<ReconciliationOperations>();
 builder.Services.AddHostedService<QuoteExpiryWorker>();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgresql");
 
@@ -68,6 +69,10 @@ api.MapPost("/quotes/{id:guid}/cancel", async (Guid id, QuoteOperations service,
 api.MapPost("/atms/{id:guid}/deposits", async (Guid id, DepositRequest request, DepositOperations service, CancellationToken ct) =>
     await service.Deposit(id, request.Notes ?? throw new BusinessException("INVALID_REQUEST", "Notes list is required.", 400),
         request.UnrecognisedCount, ct)).WithName("DepositCash");
+api.MapPost("/atms/{id:guid}/reconciliations", async (Guid id, ReconciliationRequest request,
+    HttpContext http, ReconciliationOperations service, CancellationToken ct) =>
+    await service.Create(id, request.Cassettes ?? throw new BusinessException("INVALID_REQUEST", "Cassettes list is required.", 400),
+        RequestUser(http), ct)).WithName("CreateReconciliation");
 api.MapGet("/atms/{id:guid}/report", async (Guid id, AtmOperations service, CancellationToken ct) => await service.Report(id, ct));
 api.MapGet("/atms/{id:guid}/consistency", async (Guid id, AtmOperations service, CancellationToken ct) => await service.CheckConsistency(id, ct));
 api.MapGet("/exchange-rates", async (CashDbContext db, CancellationToken ct) => await db.ExchangeRates.AsNoTracking().ToListAsync(ct));
@@ -92,6 +97,7 @@ public sealed record StateRequest(AtmState State);
 public sealed record QuoteRequest(string CardNumber, Currency Currency, int Amount);
 public sealed record ConfirmQuoteRequest(Guid AlternativeId);
 public sealed record DepositRequest(List<DepositEntry> Notes, int UnrecognisedCount);
+public sealed record ReconciliationRequest(List<CassettePhysicalCount> Cassettes);
 
 public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<ApiExceptionHandler> logger) : IExceptionHandler
 {

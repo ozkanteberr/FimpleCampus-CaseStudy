@@ -148,6 +148,9 @@ public sealed class AtmOperations(CashDbContext db, TimeProvider clock)
         }
         if (target == AtmState.IN_SERVICE)
         {
+            CashRules.Require(!await db.Reconciliations.AnyAsync(x => x.AtmId == id
+                && x.Status == ReconciliationStatus.PendingApproval, ct),
+                "PENDING_RECONCILIATION", "A reconciliation is awaiting approval.", 409);
             CashRules.ValidateConfiguration(atm.Cassettes.Select(x => new CassetteDefinition(x.Number, x.Kind, x.Currency, x.Denomination)).ToArray());
             CashRules.Require(atm.Cassettes.Where(x => x.Kind == CassetteKind.Recycling).Any(x => x.Stocks.Sum(s => s.Count) > 0),
                 "ATM_HAS_NO_DISPENSABLE_CASH", "Load at least one recycling cassette before putting the ATM in service.", 409);

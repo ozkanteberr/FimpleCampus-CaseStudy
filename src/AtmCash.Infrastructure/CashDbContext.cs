@@ -16,6 +16,8 @@ public sealed class CashDbContext(DbContextOptions<CashDbContext> options) : DbC
     public DbSet<WithdrawalConfirmation> WithdrawalConfirmations => Set<WithdrawalConfirmation>();
     public DbSet<CardDailyUsage> CardDailyUsages => Set<CardDailyUsage>();
     public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
+    public DbSet<Reconciliation> Reconciliations => Set<Reconciliation>();
+    public DbSet<ReconciliationLine> ReconciliationLines => Set<ReconciliationLine>();
     public DbSet<OutboxEvent> Outbox => Set<OutboxEvent>();
 
     protected override void OnModelCreating(ModelBuilder model)
@@ -107,6 +109,29 @@ public sealed class CashDbContext(DbContextOptions<CashDbContext> options) : DbC
             new ExchangeRate { Currency = Currency.TRY, TryRate = 1 },
             new ExchangeRate { Currency = Currency.USD, TryRate = 40 },
             new ExchangeRate { Currency = Currency.EUR, TryRate = 45 });
+        model.Entity<Reconciliation>().Property(x => x.CreatedBy).HasMaxLength(100);
+        model.Entity<Reconciliation>().Property(x => x.ApprovedBy).HasMaxLength(100);
+        model.Entity<Reconciliation>().Property(x => x.Status).HasConversion<string>();
+        model.Entity<Reconciliation>().Property(x => x.TotalAbsoluteTryDifference).HasPrecision(20, 6);
+        model.Entity<Reconciliation>().Property(x => x.PhysicalCountsJson).HasColumnType("jsonb");
+        model.Entity<Reconciliation>().HasOne<Atm>().WithMany()
+            .HasForeignKey(x => x.AtmId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<Reconciliation>().HasIndex(x => new { x.AtmId, x.Status });
+        model.Entity<Reconciliation>().ToTable(t => t.HasCheckConstraint(
+            "CK_Reconciliation_Total", "\"TotalAbsoluteTryDifference\" >= 0"));
+        model.Entity<ReconciliationLine>().HasKey(x => new
+        {
+            x.ReconciliationId, x.CassetteId, x.Currency, x.Denomination
+        });
+        model.Entity<ReconciliationLine>().Property(x => x.Currency).HasConversion<string>();
+        model.Entity<ReconciliationLine>().Property(x => x.TryRateSnapshot).HasPrecision(18, 6);
+        model.Entity<ReconciliationLine>().Property(x => x.AbsoluteTryDifference).HasPrecision(20, 6);
+        model.Entity<ReconciliationLine>().HasOne<Reconciliation>().WithMany(x => x.Lines)
+            .HasForeignKey(x => x.ReconciliationId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<ReconciliationLine>().HasOne<Cassette>().WithMany()
+            .HasForeignKey(x => x.CassetteId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<ReconciliationLine>().ToTable(t => t.HasCheckConstraint(
+            "CK_ReconciliationLine_Counts", "\"ExpectedCount\" BETWEEN 0 AND 100 AND \"ActualCount\" BETWEEN 0 AND 100 AND \"DeltaCount\" = \"ActualCount\" - \"ExpectedCount\" AND \"TryRateSnapshot\" > 0 AND \"AbsoluteTryDifference\" >= 0"));
         model.Entity<OutboxEvent>().HasIndex(x => x.SentAt);
         model.Entity<OutboxEvent>().Property(x => x.Payload).HasColumnType("jsonb");
     }
