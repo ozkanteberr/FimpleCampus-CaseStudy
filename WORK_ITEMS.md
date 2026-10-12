@@ -27,7 +27,7 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G19 | Eş zamanlı ATM teklif testi | Paralel HTTP istekleri aynı banknotu iki kez ayıramaz | Verified with 12 concurrent PostgreSQL 17 HTTP quote requests |
 | G20 | Eş zamanlı kart/ağ limiti testi | Farklı ATM'lerde aynı kartın toplamı limiti aşmaz | Verified with concurrent cross-ATM PostgreSQL 17 card-limit HTTP tests |
 | G21 | Yatırma ve iade | Recycling → deposit-only → iade; tanınmayan hariç | Verified with PostgreSQL 17 deposit, overflow return, and ledger integration test |
-| G22 | Yatırma sınır testleri | Karma para/duplicate kaset/tam dolu/kısmi kabul | Bekliyor |
+| G22 | Yatırma sınır testleri | Karma para/duplicate kaset/tam dolu/kısmi kabul | Verified with PostgreSQL 17 mixed-note, duplicate-cassette, full-cassette, and partial-return tests |
 | G23 | Mutabakat kayıt ve fark hesabı | Her kaset/para/kupür sayımı; kur snapshot'ı | Bekliyor |
 | G24 | İkinci kişi onayı | >1000 TRY bekler; aynı kullanıcı ret; hizmete dönüş kilidi | Bekliyor |
 | G25 | Mutabakat sınır testleri | 999/1000/1001, artı/eksi fark, onay akışı | Bekliyor |
