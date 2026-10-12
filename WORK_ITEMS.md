@@ -33,7 +33,7 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G25 | Reconciliation boundary tests | Verify 999/1000/1001 TRY, positive and negative differences, and approval flow | Verified with PostgreSQL boundary integration coverage and all 54 Release tests passing |
 | G26 | ATM and network reporting | Physical, reserved, and available counts; currency and converted TRY totals | Verified with two-ATM PostgreSQL report integration coverage |
 | G27 | Low-cash outbox creation | Available recycling notes cross from 10 to 9; event shares the stock transaction | Verified with PostgreSQL reservation, rejected-request, and re-arming integration test |
-| G28 | Outbox hosted service | Olay loglanır/sent; hata sonrası retry | Bekliyor |
+| G28 | Outbox hosted service | Log pending events, mark sent, and retry after failure | Verified with PostgreSQL retry and hosted-worker integration tests |
 | G29 | Postman collection/environment | ID aktarımı ve bütün sıralı senaryo | Bekliyor |
 | G30 | Hata ve API sözleşmesi incelemesi | Null/invalid/header/durum için ProblemDetails | Bekliyor |
 | G31 | Temiz Docker ve tam test koşusu | Release + tüm unit/integration + E2E geçer | Bekliyor |

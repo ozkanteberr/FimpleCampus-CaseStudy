@@ -66,7 +66,6 @@ public sealed class AtmSetupIntegrationTests
             var events = await db.Outbox.ToListAsync();
             var alert = Assert.Single(events);
             Assert.Equal("LOW_CASH", alert.Type);
-            Assert.Null(alert.SentAt);
             Assert.Equal(atmId, alert.AtmId);
             Assert.Equal(9, JsonDocument.Parse(alert.Payload).RootElement.GetProperty("availableCount").GetInt32());
 
@@ -75,6 +74,13 @@ public sealed class AtmSetupIntegrationTests
             await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/quotes",
                 new { cardNumber = "4111111111111111", currency = "TRY", amount = 100 }));
             Assert.Equal(2, await db.Outbox.CountAsync());
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                if (await db.Outbox.AsNoTracking().CountAsync(x => x.SentAt != null) == 2) break;
+                await Task.Delay(100);
+            }
+            Assert.Equal(2, await db.Outbox.AsNoTracking().CountAsync(x => x.SentAt != null));
         }
         finally
         {

@@ -15,7 +15,7 @@ Compose starts PostgreSQL 17, waits for its health check, and then starts the AP
 
 For local API development, install the .NET 10 SDK, start only the database with `docker compose up -d db`, then run `dotnet run --project src/AtmCash.Api --urls http://localhost:5080`. The default connection string is in `src/AtmCash.Api/appsettings.json`; override it with `ConnectionStrings__CashDb`. Provide a private `CardIdentity__HmacKey` outside local development.
 
-With PostgreSQL running, execute `dotnet test AtmCashManagement.sln -c Release`. Integration tests create and drop isolated real PostgreSQL databases. Their administrative connection defaults to `Host=127.0.0.1;Port=55432;Database=postgres;Username=atm_app;Password=atm_local_password`; override it with `ATM_TEST_PG`. The latest Release run passed 55/55 tests, including all eight required B3 note-selection cases, concurrency, real-database HTTP flows, deposits, ledger checks, and reconciliation boundaries. For unit tests alone, use `dotnet test AtmCashManagement.sln -c Release --filter 'Category!=Integration'`.
+With PostgreSQL running, execute `dotnet test AtmCashManagement.sln -c Release`. Integration tests create and drop isolated real PostgreSQL databases. Their administrative connection defaults to `Host=127.0.0.1;Port=55432;Database=postgres;Username=atm_app;Password=atm_local_password`; override it with `ATM_TEST_PG`. The latest Release run passed 56/56 tests, including all eight required B3 note-selection cases, concurrency, real-database HTTP flows, deposits, ledger checks, and reconciliation boundaries. For unit tests alone, use `dotnet test AtmCashManagement.sln -c Release --filter 'Category!=Integration'`.
 
 An operational flow is:
 
@@ -96,7 +96,7 @@ The lifecycle is `UNCONFIGURED -> CONFIGURED -> LOADED -> IN_SERVICE <-> MAINTEN
 | A9-A10, B3-B6: optimal withdrawal, quote/confirm/cancel, expiry, card limits, concurrency | Eight specified acceptance tests; quote and idempotency tests; parallel ATM and cross-ATM card tests | Implemented |
 | A11, B7: deposit routing, overflow, returned/unrecognized notes | Deposit and boundary integration tests against PostgreSQL | Implemented |
 | A12, B8: per-ATM balances, immutable movements, consistency endpoint | Reporting and ledger integration tests, SQL update/delete protection | Implemented |
-| B10: network reporting and low-cash alert outbox | Reports and transactional low-cash outbox creation exist; event delivery remains open | Partial |
+| B10: network reporting and low-cash alert outbox | Reports, transactional outbox creation, and hosted logging/mark-sent processing are implemented | Implemented |
 | Technical: API, EF migrations, PostgreSQL, DI, Compose, OpenAPI, ProblemDetails, health | Application startup and infrastructure; clean final Compose verification remains open | Implemented, final smoke check pending |
 | Delivery: ordered Postman run, final repository/ZIP | Local draft exists; repository handoff and clean end-to-end run remain open | Pending |
 
@@ -126,7 +126,7 @@ The quote path acquires state, card, and ATM locks in a fixed sequence. The stat
 
 ### Automated checks
 
-The B3 cases specifically exercise stock-constrained exact payment, nearest lower and upper choices, absence of an upper choice, and minimization of the number of notes. The independent exhaustive-search checks reduce the risk that the dynamic program and its test expectations share the same mistake. PostgreSQL-backed tests then cover migration/seed behavior, the full ATM lifecycle, quote expiration, same-key confirmation replay, cancellation, deposits and capacity, ledger immutability, concurrent reservations, network-wide daily limits, and second-user reconciliation approval. The 999, 1000, and 1001 TRY tests verify the strict `> 1000` condition and both positive and negative stock differences. The suite passed 55/55 in Release at the most recent run.
+The B3 cases specifically exercise stock-constrained exact payment, nearest lower and upper choices, absence of an upper choice, and minimization of the number of notes. The independent exhaustive-search checks reduce the risk that the dynamic program and its test expectations share the same mistake. PostgreSQL-backed tests then cover migration/seed behavior, the full ATM lifecycle, quote expiration, same-key confirmation replay, cancellation, deposits and capacity, ledger immutability, concurrent reservations, network-wide daily limits, and second-user reconciliation approval. The 999, 1000, and 1001 TRY tests verify the strict `> 1000` condition and both positive and negative stock differences. The suite passed 56/56 in Release at the most recent run.
 
 ## Assumptions
 
@@ -140,8 +140,7 @@ The B3 cases specifically exercise stock-constrained exact payment, nearest lowe
 
 ## Unfinished items and known limitations
 
-- B10's hosted alert dispatcher is pending. Low-cash events are written to the outbox with the triggering stock transaction, and the network report aggregates ATM balances and cassettes.
-- Low cash means fewer than 10 available notes in a recycling cassette, since capacity is 100. Crossing from 10 to 9 creates an event; recovery to 10 allows a future event. Logging, delivery retries, and sent-state tracking remain pending.
+- Low cash means fewer than 10 available notes in a recycling cassette, since capacity is 100. Crossing from 10 to 9 creates an event; recovery to 10 allows a future event. The hosted worker logs pending events and marks them sent; failures leave them pending for retry. Delivery is logging only, as requested by the assignment; no external notification channel is integrated.
 - A Postman collection and local environment have been prepared separately but have not yet been added to this Git repository or verified against a clean Compose run. The repository-delivered ordered end-to-end Postman scenario remains pending.
 - Final clean Docker/Postman verification and a full API edge-case review remain pending. The 54-test PostgreSQL Release run verifies current code but is not the final clean-stack acceptance run.
 - Local Compose credentials, development HMAC key, and seeded rates are demonstration settings. There is no production authentication, authorization, card-network integration, or secret management.

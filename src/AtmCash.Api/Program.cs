@@ -20,7 +20,9 @@ builder.Services.AddScoped<QuoteOperations>();
 builder.Services.AddScoped<QuoteExpiryOperations>();
 builder.Services.AddScoped<DepositOperations>();
 builder.Services.AddScoped<ReconciliationOperations>();
+builder.Services.AddScoped<OutboxOperations>();
 builder.Services.AddHostedService<QuoteExpiryWorker>();
+builder.Services.AddHostedService<OutboxWorker>();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgresql");
 
 var app = builder.Build();
