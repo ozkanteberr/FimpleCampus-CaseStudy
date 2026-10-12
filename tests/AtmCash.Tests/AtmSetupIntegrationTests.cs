@@ -28,7 +28,8 @@ public sealed class AtmSetupIntegrationTests
             await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["ConnectionStrings:CashDb"] = testConnection
+                    ["ConnectionStrings:CashDb"] = testConnection,
+                    ["CardIdentity:HmacKey"] = "integration-test-card-hmac-key-with-32-bytes"
                 })));
             using var client = factory.CreateClient();
             client.DefaultRequestHeaders.Add("X-User", "setup-officer");
@@ -98,6 +99,33 @@ public sealed class AtmSetupIntegrationTests
             Assert.Equal(5, report.GetProperty("cassettes").GetArrayLength());
             Assert.Equal(276500m, report.GetProperty("overallTryBalance").GetDecimal());
             Assert.Equal(80, report.GetProperty("cassettes")[0].GetProperty("available").GetInt32());
+            var secondId = (await Read(await client.PostAsJsonAsync("/api/atms",
+                new { name = "Second ATM" }))).GetProperty("id").GetGuid();
+            await Read(await client.PutAsJsonAsync($"/api/atms/{secondId}/configuration",
+                new { cassettes = configuration }));
+            await Read(await client.PostAsJsonAsync($"/api/atms/{secondId}/load", new
+            {
+                notes = new[] { Note(3, "TRY", 20, 2), Note(4, "USD", 100, 1) }
+            }));
+            await Read(await client.PostAsJsonAsync($"/api/atms/{secondId}/state",
+                new { state = "IN_SERVICE" }));
+            await Read(await client.PostAsJsonAsync($"/api/atms/{atmId}/quotes", new
+            {
+                cardNumber = "4111111111111111", currency = "TRY", amount = 100
+            }));
+            var network = await Read(await client.GetAsync("/api/report"));
+            Assert.Equal(2, network.GetProperty("atms").GetArrayLength());
+            Assert.Equal(280_540m, network.GetProperty("overallTryBalance").GetDecimal());
+            var atmReports = network.GetProperty("atms").EnumerateArray().ToArray();
+            Assert.Equal("Second ATM", atmReports[0].GetProperty("name").GetString());
+            Assert.Equal(4_040m, atmReports[0].GetProperty("overallTryBalance").GetDecimal());
+            Assert.Equal(276_500m, atmReports[1].GetProperty("overallTryBalance").GetDecimal());
+            var tryTotal = network.GetProperty("totals").EnumerateArray()
+                .Single(x => x.GetProperty("currency").GetString() == "TRY");
+            Assert.Equal(100m, tryTotal.GetProperty("reserved").GetDecimal());
+            Assert.Equal(14_040m, tryTotal.GetProperty("balance").GetDecimal());
+            Assert.Equal(13_940m, tryTotal.GetProperty("available").GetDecimal());
+            Assert.Equal(1, atmReports[1].GetProperty("cassettes")[0].GetProperty("reserved").GetInt32());
             var consistency = await Read(await client.GetAsync($"/api/atms/{atmId}/consistency"));
             Assert.True(consistency.GetProperty("consistent").GetBoolean());
             Assert.Empty(consistency.GetProperty("differences").EnumerateArray().ToArray());

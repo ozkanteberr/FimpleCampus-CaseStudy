@@ -22,7 +22,7 @@ An operational flow is:
 1. `POST /api/atms`; configure five cassettes through `PUT /api/atms/{id}/configuration`; record hand-loaded cash through `POST /api/atms/{id}/load` with `X-User`; then `POST /api/atms/{id}/state` with `{"state":"IN_SERVICE"}`.
 2. `POST /api/atms/{id}/quotes` with `cardNumber`, `currency`, and `amount`. Select an alternative and `POST /api/quotes/{quoteId}/confirm` with its `alternativeId` and a unique `Idempotency-Key`, or cancel through `POST /api/quotes/{quoteId}/cancel`.
 3. `POST /api/atms/{id}/deposits` with recognized `notes` and `unrecognisedCount`. Move the ATM to `MAINTENANCE`, then `POST /api/atms/{id}/reconciliations` with all five cassette counts and `X-User`. If approval is required, a different `X-User` calls `POST /api/reconciliations/{reconciliationId}/approve`.
-4. Read `GET /api/atms/{id}/report`, `GET /api/atms/{id}/consistency`, and `GET /api/exchange-rates`. The report includes per-cassette count, reserved and available notes, totals by currency, and an overall TRY balance. Business errors use ProblemDetails with a meaningful `code` and trace ID.
+4. Read `GET /api/atms/{id}/report`, `GET /api/report` for the whole network, `GET /api/atms/{id}/consistency`, and `GET /api/exchange-rates`. The reports include per-cassette count, reserved and available notes, totals by currency, and an overall TRY balance. Business errors use ProblemDetails with a meaningful `code` and trace ID.
 
 The following request bodies show the exact JSON shapes. Replace `{atmId}`, `{quoteId}`, and `{reconciliationId}` with IDs returned by earlier calls. Enum values are strings.
 
@@ -96,7 +96,7 @@ The lifecycle is `UNCONFIGURED -> CONFIGURED -> LOADED -> IN_SERVICE <-> MAINTEN
 | A9-A10, B3-B6: optimal withdrawal, quote/confirm/cancel, expiry, card limits, concurrency | Eight specified acceptance tests; quote and idempotency tests; parallel ATM and cross-ATM card tests | Implemented |
 | A11, B7: deposit routing, overflow, returned/unrecognized notes | Deposit and boundary integration tests against PostgreSQL | Implemented |
 | A12, B8: per-ATM balances, immutable movements, consistency endpoint | Reporting and ledger integration tests, SQL update/delete protection | Implemented |
-| B10: network reporting and low-cash alert outbox | Per-ATM counts and totals exist; network aggregate and alert pipeline remain open | Partial |
+| B10: network reporting and low-cash alert outbox | Per-ATM and network reports exist; the alert pipeline remains open | Partial |
 | Technical: API, EF migrations, PostgreSQL, DI, Compose, OpenAPI, ProblemDetails, health | Application startup and infrastructure; clean final Compose verification remains open | Implemented, final smoke check pending |
 | Delivery: ordered Postman run, final repository/ZIP | Local draft exists; repository handoff and clean end-to-end run remain open | Pending |
 
@@ -140,7 +140,7 @@ The B3 cases specifically exercise stock-constrained exact payment, nearest lowe
 
 ## Unfinished items and known limitations
 
-- B10's network-wide reporting and low-cash outbox/hosted alert service are pending. The implemented report covers one ATM and its cassettes.
+- B10's low-cash outbox and hosted alert service are pending. The implemented network report aggregates ATM balances and shows each ATM's cassettes.
 - The planned low-cash threshold is an available recycling-cassette count below 10 notes, since cassette capacity is 100. Alert creation, transactional outbox persistence, delivery retries, and sent-state tracking are not implemented yet.
 - A Postman collection and local environment have been prepared separately but have not yet been added to this Git repository or verified against a clean Compose run. The repository-delivered ordered end-to-end Postman scenario remains pending.
 - Final clean Docker/Postman verification and a full API edge-case review remain pending. The 54-test PostgreSQL Release run verifies current code but is not the final clean-stack acceptance run.

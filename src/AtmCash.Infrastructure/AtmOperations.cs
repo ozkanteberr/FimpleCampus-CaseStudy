@@ -11,6 +11,8 @@ public sealed record CassetteReport(int Number, CassetteKind Kind, Currency? Cur
 public sealed record CurrencyTotal(Currency Currency, decimal Balance, decimal Reserved, decimal Available);
 public sealed record AtmReport(Guid Id, string Name, AtmState State, IReadOnlyList<CassetteReport> Cassettes,
     IReadOnlyList<CurrencyTotal> Totals, decimal OverallTryBalance);
+public sealed record NetworkReport(IReadOnlyList<AtmReport> Atms, IReadOnlyList<CurrencyTotal> Totals,
+    decimal OverallTryBalance);
 public sealed record BalanceDifference(int CassetteNumber, Currency Currency, int Denomination,
     int StoredCount, int LedgerCount, int StoredReserved, int LedgerReserved);
 public sealed record ConsistencyResult(Guid AtmId, bool Consistent, IReadOnlyList<BalanceDifference> Differences);
@@ -163,8 +165,31 @@ public sealed class AtmOperations(CashDbContext db, TimeProvider clock)
 
     public async Task<AtmReport> Report(Guid id, CancellationToken ct)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, ct);
         var atm = await Find(id, ct);
         var rates = await db.ExchangeRates.AsNoTracking().ToDictionaryAsync(x => x.Currency, x => x.TryRate, ct);
+        var result = BuildReport(atm, rates);
+        await transaction.CommitAsync(ct);
+        return result;
+    }
+
+    public async Task<NetworkReport> NetworkReport(CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, ct);
+        var atms = await db.Atms.AsNoTracking().Include(x => x.Cassettes).ThenInclude(x => x.Stocks)
+            .OrderBy(x => x.Name).ThenBy(x => x.Id).ToListAsync(ct);
+        var rates = await db.ExchangeRates.AsNoTracking().ToDictionaryAsync(x => x.Currency, x => x.TryRate, ct);
+        var reports = atms.Select(x => BuildReport(x, rates)).ToArray();
+        var totals = Enum.GetValues<Currency>().Select(currency => new CurrencyTotal(currency,
+            reports.Sum(x => x.Totals.Single(t => t.Currency == currency).Balance),
+            reports.Sum(x => x.Totals.Single(t => t.Currency == currency).Reserved),
+            reports.Sum(x => x.Totals.Single(t => t.Currency == currency).Available))).ToArray();
+        await transaction.CommitAsync(ct);
+        return new NetworkReport(reports, totals, totals.Sum(x => x.Balance * rates[x.Currency]));
+    }
+
+    private static AtmReport BuildReport(Atm atm, IReadOnlyDictionary<Currency, decimal> rates)
+    {
         var cassettes = atm.Cassettes.OrderBy(x => x.Number).Select(x => new CassetteReport(
             x.Number, x.Kind, x.Currency, x.Denomination, CashRules.Capacity, x.Stocks.Sum(s => s.Count),
             x.Stocks.Sum(s => s.Reserved), x.Stocks.Sum(s => s.Count - s.Reserved),

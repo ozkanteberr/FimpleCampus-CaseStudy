@@ -77,6 +77,7 @@ api.MapPost("/reconciliations/{id:guid}/approve", async (Guid id, HttpContext ht
     ReconciliationOperations service, CancellationToken ct) =>
     await service.Approve(id, RequestUser(http), ct)).WithName("ApproveReconciliation");
 api.MapGet("/atms/{id:guid}/report", async (Guid id, AtmOperations service, CancellationToken ct) => await service.Report(id, ct));
+api.MapGet("/report", async (AtmOperations service, CancellationToken ct) => await service.NetworkReport(ct));
 api.MapGet("/atms/{id:guid}/consistency", async (Guid id, AtmOperations service, CancellationToken ct) => await service.CheckConsistency(id, ct));
 api.MapGet("/exchange-rates", async (CashDbContext db, CancellationToken ct) => await db.ExchangeRates.AsNoTracking().ToListAsync(ct));
 
