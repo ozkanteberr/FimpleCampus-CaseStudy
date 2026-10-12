@@ -6,3 +6,4 @@ TestResults/
 .env
 *.user
 *.zip
+/.vscode/settings.json
