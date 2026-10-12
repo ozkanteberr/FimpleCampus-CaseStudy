@@ -34,6 +34,7 @@ public sealed class MigrationIntegrationTests
             var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
             Assert.Contains(appliedMigrations, x => x.EndsWith("_InitialCashManagement"));
             Assert.Contains(appliedMigrations, x => x.EndsWith("_QuoteReservations"));
+            Assert.Contains(appliedMigrations, x => x.EndsWith("_CardDailyLimits"));
 
             var atm = new Atm { Name = "Migration test" };
             var cassette = new Cassette { AtmId = atm.Id, Number = 1, Kind = CassetteKind.Recycling, Currency = Currency.TRY, Denomination = 100 };

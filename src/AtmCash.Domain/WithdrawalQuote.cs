@@ -9,6 +9,8 @@ public sealed class WithdrawalQuote
     public Guid AtmId { get; set; }
     public Currency Currency { get; set; }
     public int RequestedAmount { get; set; }
+    public string? CardFingerprint { get; set; }
+    public int ReservedLimitAmount { get; set; }
     public WithdrawalQuoteStatus Status { get; set; } = WithdrawalQuoteStatus.Active;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }

@@ -42,6 +42,35 @@ namespace AtmCash.Infrastructure.Migrations
                     b.ToTable("Atms");
                 });
 
+            modelBuilder.Entity("AtmCash.Domain.CardDailyUsage", b =>
+                {
+                    b.Property<string>("CardFingerprint")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Currency")
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly>("UtcDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("ReservedAmount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UsedAmount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("CardFingerprint", "Currency", "UtcDate");
+
+                    b.ToTable("CardDailyUsages", t =>
+                        {
+                            t.HasCheckConstraint("CK_CardDailyUsage_Balance", "\"UsedAmount\" >= 0 AND \"ReservedAmount\" >= 0 AND \"UsedAmount\" + \"ReservedAmount\" <= CASE \"Currency\" WHEN 'TRY' THEN 20000 WHEN 'USD' THEN 1000 WHEN 'EUR' THEN 1000 ELSE -1 END");
+
+                            t.HasCheckConstraint("CK_CardDailyUsage_Fingerprint", "\"CardFingerprint\" ~ '^[0-9a-f]{64}$'");
+                        });
+                });
+
             modelBuilder.Entity("AtmCash.Domain.Cassette", b =>
                 {
                     b.Property<Guid>("Id")
@@ -278,6 +307,11 @@ namespace AtmCash.Infrastructure.Migrations
                     b.Property<Guid>("AtmId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("CardFingerprint")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -291,6 +325,9 @@ namespace AtmCash.Infrastructure.Migrations
                     b.Property<int>("RequestedAmount")
                         .HasColumnType("integer");
 
+                    b.Property<int>("ReservedLimitAmount")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
@@ -299,13 +336,19 @@ namespace AtmCash.Infrastructure.Migrations
 
                     b.HasIndex("AtmId");
 
+                    b.HasIndex("CardFingerprint", "Status");
+
                     b.HasIndex("Status", "ExpiresAt");
 
                     b.ToTable("WithdrawalQuotes", t =>
                         {
                             t.HasCheckConstraint("CK_WithdrawalQuote_Amount", "\"RequestedAmount\" > 0");
 
+                            t.HasCheckConstraint("CK_WithdrawalQuote_CardFingerprint", "\"CardFingerprint\" IS NULL OR \"CardFingerprint\" ~ '^[0-9a-f]{64}$'");
+
                             t.HasCheckConstraint("CK_WithdrawalQuote_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
+
+                            t.HasCheckConstraint("CK_WithdrawalQuote_LimitReservation", "\"ReservedLimitAmount\" >= 0 AND (\"CardFingerprint\" IS NOT NULL OR \"ReservedLimitAmount\" = 0)");
                         });
                 });
 

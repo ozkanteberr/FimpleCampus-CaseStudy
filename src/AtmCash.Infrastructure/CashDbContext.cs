@@ -13,6 +13,7 @@ public sealed class CashDbContext(DbContextOptions<CashDbContext> options) : DbC
     public DbSet<WithdrawalAlternative> WithdrawalAlternatives => Set<WithdrawalAlternative>();
     public DbSet<WithdrawalAllocation> WithdrawalAllocations => Set<WithdrawalAllocation>();
     public DbSet<WithdrawalReservation> WithdrawalReservations => Set<WithdrawalReservation>();
+    public DbSet<CardDailyUsage> CardDailyUsages => Set<CardDailyUsage>();
     public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
     public DbSet<OutboxEvent> Outbox => Set<OutboxEvent>();
 
@@ -40,12 +41,18 @@ public sealed class CashDbContext(DbContextOptions<CashDbContext> options) : DbC
         model.Entity<Movement>().HasOne<Cassette>().WithMany().HasForeignKey(x => x.CassetteId).OnDelete(DeleteBehavior.Restrict);
         model.Entity<WithdrawalQuote>().Property(x => x.Currency).HasConversion<string>();
         model.Entity<WithdrawalQuote>().Property(x => x.Status).HasConversion<string>();
+        model.Entity<WithdrawalQuote>().Property(x => x.CardFingerprint).HasMaxLength(64).IsUnicode(false);
         model.Entity<WithdrawalQuote>().HasOne<Atm>().WithMany().HasForeignKey(x => x.AtmId).OnDelete(DeleteBehavior.Restrict);
         model.Entity<WithdrawalQuote>().HasIndex(x => new { x.Status, x.ExpiresAt });
+        model.Entity<WithdrawalQuote>().HasIndex(x => new { x.CardFingerprint, x.Status });
         model.Entity<WithdrawalQuote>().ToTable(t =>
         {
             t.HasCheckConstraint("CK_WithdrawalQuote_Amount", "\"RequestedAmount\" > 0");
             t.HasCheckConstraint("CK_WithdrawalQuote_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
+            t.HasCheckConstraint("CK_WithdrawalQuote_CardFingerprint",
+                "\"CardFingerprint\" IS NULL OR \"CardFingerprint\" ~ '^[0-9a-f]{64}$'");
+            t.HasCheckConstraint("CK_WithdrawalQuote_LimitReservation",
+                "\"ReservedLimitAmount\" >= 0 AND (\"CardFingerprint\" IS NOT NULL OR \"ReservedLimitAmount\" = 0)");
         });
         model.Entity<WithdrawalAlternative>().Property(x => x.Kind).HasConversion<string>();
         model.Entity<WithdrawalAlternative>().HasOne<WithdrawalQuote>().WithMany(x => x.Alternatives)
@@ -74,6 +81,15 @@ public sealed class CashDbContext(DbContextOptions<CashDbContext> options) : DbC
         {
             t.HasCheckConstraint("CK_WithdrawalReservation_Count", "\"Count\" BETWEEN 1 AND 100");
             t.HasCheckConstraint("CK_WithdrawalReservation_Note", "\"Currency\" IN ('TRY','USD','EUR') AND \"Denomination\" IN (20,50,100,500)");
+        });
+        model.Entity<CardDailyUsage>().HasKey(x => new { x.CardFingerprint, x.Currency, x.UtcDate });
+        model.Entity<CardDailyUsage>().Property(x => x.CardFingerprint).HasMaxLength(64).IsUnicode(false);
+        model.Entity<CardDailyUsage>().Property(x => x.Currency).HasConversion<string>();
+        model.Entity<CardDailyUsage>().ToTable(t =>
+        {
+            t.HasCheckConstraint("CK_CardDailyUsage_Fingerprint", "\"CardFingerprint\" ~ '^[0-9a-f]{64}$'");
+            t.HasCheckConstraint("CK_CardDailyUsage_Balance",
+                "\"UsedAmount\" >= 0 AND \"ReservedAmount\" >= 0 AND \"UsedAmount\" + \"ReservedAmount\" <= CASE \"Currency\" WHEN 'TRY' THEN 20000 WHEN 'USD' THEN 1000 WHEN 'EUR' THEN 1000 ELSE -1 END");
         });
         model.Entity<ExchangeRate>().HasKey(x => x.Currency);
         model.Entity<ExchangeRate>().Property(x => x.Currency).HasConversion<string>();
