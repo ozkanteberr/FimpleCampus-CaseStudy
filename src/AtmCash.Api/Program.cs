@@ -60,6 +60,8 @@ api.MapPost("/atms/{id:guid}/quotes", async (Guid id, QuoteRequest request, Quot
     await service.Create(id, request.CardNumber, request.Currency, request.Amount, ct)).WithName("CreateQuote");
 api.MapPost("/quotes/{id:guid}/confirm", async (Guid id, ConfirmQuoteRequest request, HttpContext http, QuoteOperations service, CancellationToken ct) =>
     await service.Confirm(id, request.AlternativeId, http.Request.Headers["Idempotency-Key"].ToString(), ct)).WithName("ConfirmQuote");
+api.MapPost("/quotes/{id:guid}/cancel", async (Guid id, QuoteOperations service, CancellationToken ct) =>
+    await service.Cancel(id, ct)).WithName("CancelQuote");
 api.MapGet("/atms/{id:guid}/report", async (Guid id, AtmOperations service, CancellationToken ct) => await service.Report(id, ct));
 api.MapGet("/atms/{id:guid}/consistency", async (Guid id, AtmOperations service, CancellationToken ct) => await service.CheckConsistency(id, ct));
 api.MapGet("/exchange-rates", async (CashDbContext db, CancellationToken ct) => await db.ExchangeRates.AsNoTracking().ToListAsync(ct));
