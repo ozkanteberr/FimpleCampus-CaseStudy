@@ -1,0 +1,137 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
+using Npgsql;
+
+namespace AtmCash.Tests;
+
+public sealed class AtmSetupIntegrationTests
+{
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Atm_setup_enforces_lifecycle_capacity_and_atomic_loading()
+    {
+        var adminConnection = Environment.GetEnvironmentVariable("ATM_TEST_PG")
+            ?? "Host=127.0.0.1;Port=55432;Database=postgres;Username=atm_app;Password=atm_local_password";
+        var databaseName = "atm_setup_test_" + Guid.NewGuid().ToString("N");
+        await using var admin = new NpgsqlConnection(adminConnection);
+        await admin.OpenAsync();
+        try
+        {
+            await using (var create = new NpgsqlCommand($"CREATE DATABASE \"{databaseName}\"", admin))
+                await create.ExecuteNonQueryAsync();
+
+            var testConnection = new NpgsqlConnectionStringBuilder(adminConnection) { Database = databaseName }.ConnectionString;
+            await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
+                web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:CashDb"] = testConnection
+                })));
+            using var client = factory.CreateClient();
+            client.DefaultRequestHeaders.Add("X-User", "setup-officer");
+
+            var created = await client.PostAsJsonAsync("/api/atms", new { name = "Test ATM" });
+            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+            var atmId = (await Read(created)).GetProperty("id").GetGuid();
+
+            await ExpectError(client.PostAsJsonAsync($"/api/atms/{atmId}/state", new { state = "IN_SERVICE" }),
+                HttpStatusCode.Conflict, "INVALID_STATE_TRANSITION");
+            await ExpectError(client.PostAsJsonAsync($"/api/atms/{atmId}/load", new
+            {
+                notes = new[] { Note(1, "TRY", 100, 5) }
+            }), HttpStatusCode.Conflict, "INVALID_ATM_STATE");
+
+            var configuration = new[]
+            {
+                Cassette(1, "Recycling", "TRY", 100),
+                Cassette(2, "Recycling", "TRY", 50),
+                Cassette(3, "Recycling", "TRY", 20),
+                Cassette(4, "Recycling", "USD", 100),
+                Cassette(5, "DepositOnly", null, null)
+            };
+            var configured = await client.PutAsJsonAsync($"/api/atms/{atmId}/configuration", new { cassettes = configuration });
+            Assert.Equal(HttpStatusCode.OK, configured.StatusCode);
+            Assert.Equal("CONFIGURED", (await Read(configured)).GetProperty("state").GetString());
+
+            var overflow = await client.PostAsJsonAsync($"/api/atms/{atmId}/load", new
+            {
+                notes = new[]
+                {
+                    Note(1, "TRY", 100, 80),
+                    Note(5, "TRY", 20, 60),
+                    Note(5, "EUR", 50, 50)
+                }
+            });
+            await ExpectError(Task.FromResult(overflow), HttpStatusCode.Conflict, "CASSETTE_FULL");
+
+            var beforeLoad = await Read(await client.GetAsync($"/api/atms/{atmId}/report"));
+            Assert.Equal("CONFIGURED", beforeLoad.GetProperty("state").GetString());
+            Assert.All(beforeLoad.GetProperty("cassettes").EnumerateArray().ToArray(),
+                cassette => Assert.Equal(0, cassette.GetProperty("count").GetInt32()));
+            var beforeConsistency = await Read(await client.GetAsync($"/api/atms/{atmId}/consistency"));
+            Assert.True(beforeConsistency.GetProperty("consistent").GetBoolean());
+
+            var loaded = await client.PostAsJsonAsync($"/api/atms/{atmId}/load", new
+            {
+                notes = new[]
+                {
+                    Note(1, "TRY", 100, 80), Note(2, "TRY", 50, 90),
+                    Note(3, "TRY", 20, 75), Note(4, "USD", 100, 60),
+                    Note(5, "EUR", 50, 10)
+                }
+            });
+            Assert.Equal(HttpStatusCode.OK, loaded.StatusCode);
+            Assert.Equal("LOADED", (await Read(loaded)).GetProperty("state").GetString());
+            await ExpectError(client.PostAsJsonAsync($"/api/atms/{atmId}/load", new
+            {
+                notes = new[] { Note(1, "TRY", 100, 1) }
+            }), HttpStatusCode.Conflict, "INVALID_ATM_STATE");
+
+            var inService = await client.PostAsJsonAsync($"/api/atms/{atmId}/state", new { state = "IN_SERVICE" });
+            Assert.Equal(HttpStatusCode.OK, inService.StatusCode);
+            Assert.Equal("IN_SERVICE", (await Read(inService)).GetProperty("state").GetString());
+
+            var report = await Read(await client.GetAsync($"/api/atms/{atmId}/report"));
+            Assert.Equal(5, report.GetProperty("cassettes").GetArrayLength());
+            Assert.Equal(276500m, report.GetProperty("overallTryBalance").GetDecimal());
+            Assert.Equal(80, report.GetProperty("cassettes")[0].GetProperty("available").GetInt32());
+            var consistency = await Read(await client.GetAsync($"/api/atms/{atmId}/consistency"));
+            Assert.True(consistency.GetProperty("consistent").GetBoolean());
+            Assert.Empty(consistency.GetProperty("differences").EnumerateArray().ToArray());
+        }
+        finally
+        {
+            await using var terminate = new NpgsqlCommand(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = @name AND pid <> pg_backend_pid()", admin);
+            terminate.Parameters.AddWithValue("name", databaseName);
+            await terminate.ExecuteNonQueryAsync();
+            await using var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{databaseName}\"", admin);
+            await drop.ExecuteNonQueryAsync();
+        }
+    }
+
+    private static object Note(int cassetteNumber, string currency, int denomination, int count) =>
+        new { cassetteNumber, currency, denomination, count };
+
+    private static object Cassette(int number, string kind, string? currency, int? denomination) =>
+        new { number, kind, currency, denomination };
+
+    private static async Task<JsonElement> Read(HttpResponseMessage response)
+    {
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return document.RootElement.Clone();
+    }
+
+    private static async Task ExpectError(Task<HttpResponseMessage> responseTask, HttpStatusCode status, string code)
+    {
+        using var response = await responseTask;
+        Assert.Equal(status, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(code, document.RootElement.GetProperty("code").GetString());
+    }
+}
