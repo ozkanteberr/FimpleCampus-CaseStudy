@@ -17,6 +17,8 @@ For local API development, install the .NET 10 SDK, start only the database with
 
 With PostgreSQL running, execute `dotnet test AtmCashManagement.sln -c Release`. Integration tests create and drop isolated real PostgreSQL databases. Their administrative connection defaults to `Host=127.0.0.1;Port=55432;Database=postgres;Username=atm_app;Password=atm_local_password`; override it with `ATM_TEST_PG`. The latest Release run passed 56/56 tests, including all eight required B3 note-selection cases, concurrency, real-database HTTP flows, deposits, ledger checks, and reconciliation boundaries. For unit tests alone, use `dotnet test AtmCashManagement.sln -c Release --filter 'Category!=Integration'`.
 
+Import `docs/postman/ATM-Cash-Management.postman_collection.json` and `docs/postman/ATM-Cash-Management.local.postman_environment.json` into Postman, select the **ATM Cash Management - Local Docker** environment, and run the complete collection in its existing order. The environment defaults to `http://localhost:5080` for Compose; change `baseUrl` if the API uses another port. The collection creates a new ATM on each run and passes returned IDs between requests. It covers setup, load, service, quote/confirm/cancel, deposit, maintenance, physical count, second-user approval, return to service, and ATM/network reports. The high-difference count intentionally submits one extra USD 100 note; self-approval must return `409` before a different user succeeds. For a command-line run, use `newman run docs/postman/ATM-Cash-Management.postman_collection.json -e docs/postman/ATM-Cash-Management.local.postman_environment.json`.
+
 An operational flow is:
 
 1. `POST /api/atms`; configure five cassettes through `PUT /api/atms/{id}/configuration`; record hand-loaded cash through `POST /api/atms/{id}/load` with `X-User`; then `POST /api/atms/{id}/state` with `{"state":"IN_SERVICE"}`.
@@ -98,7 +100,7 @@ The lifecycle is `UNCONFIGURED -> CONFIGURED -> LOADED -> IN_SERVICE <-> MAINTEN
 | A12, B8: per-ATM balances, immutable movements, consistency endpoint | Reporting and ledger integration tests, SQL update/delete protection | Implemented |
 | B10: network reporting and low-cash alert outbox | Reports, transactional outbox creation, and hosted logging/mark-sent processing are implemented | Implemented |
 | Technical: API, EF migrations, PostgreSQL, DI, Compose, OpenAPI, ProblemDetails, health | Application startup and infrastructure; clean final Compose verification remains open | Implemented, final smoke check pending |
-| Delivery: ordered Postman run, final repository/ZIP | Local draft exists; repository handoff and clean end-to-end run remain open | Pending |
+| Delivery: ordered Postman run, final repository/ZIP | The repository contains the collection and local environment; all 22 requests passed against the current API and PostgreSQL. Final clean Compose verification and repository/ZIP handoff remain open | Postman verified; final handoff pending |
 
 This table describes implemented code and existing automated evidence, not a claim that every delivery gate has been completed. The current detailed task ledger is `WORK_ITEMS.md`.
 
@@ -141,8 +143,8 @@ The B3 cases specifically exercise stock-constrained exact payment, nearest lowe
 ## Unfinished items and known limitations
 
 - Low cash means fewer than 10 available notes in a recycling cassette, since capacity is 100. Crossing from 10 to 9 creates an event; recovery to 10 allows a future event. The hosted worker logs pending events and marks them sent; failures leave them pending for retry. Delivery is logging only, as requested by the assignment; no external notification channel is integrated.
-- A Postman collection and local environment have been prepared separately but have not yet been added to this Git repository or verified against a clean Compose run. The repository-delivered ordered end-to-end Postman scenario remains pending.
-- Final clean Docker/Postman verification and a full API edge-case review remain pending. The 54-test PostgreSQL Release run verifies current code but is not the final clean-stack acceptance run.
+- The ordered Postman scenario passed all 22 requests against the current local API and PostgreSQL. It has not yet been rerun against a freshly rebuilt Compose stack.
+- Final clean Docker/Postman verification and a full API edge-case review remain pending. The 56-test PostgreSQL Release run verifies current code but is not the final clean-stack acceptance run.
 - Local Compose credentials, development HMAC key, and seeded rates are demonstration settings. There is no production authentication, authorization, card-network integration, or secret management.
 
 `WORK_ITEMS.md` tracks atomic delivery status. `ROADMAP.md` records the full assignment plan. Final submission requires the Git repository or ZIP and the Postman collection/environment.

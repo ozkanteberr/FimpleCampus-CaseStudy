@@ -1,0 +1,76 @@
+{
+  "info": {
+    "_postman_id": "a79f240f-2299-4b4a-9f4d-8a5ec996a24d",
+    "name": "ATM Cash Management API",
+    "description": "Ordered local end-to-end workflow for ATM setup, withdrawals, deposits, reconciliation approval, and reports.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5080" },
+    { "key": "atmId", "value": "" },
+    { "key": "quoteId", "value": "" },
+    { "key": "alternativeId", "value": "" },
+    { "key": "idempotencyKey", "value": "" },
+    { "key": "cancelQuoteId", "value": "" },
+    { "key": "reconciliationId", "value": "" },
+    { "key": "cardNumber", "value": "4111111111111111" },
+    { "key": "user", "value": "cash-operator" },
+    { "key": "approverUser", "value": "review-officer" },
+    { "key": "reconciliationBody", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 - Health",
+      "item": [
+        { "name": "API health", "request": { "method": "GET", "url": "{{baseUrl}}/health" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('API is healthy', function () { pm.response.to.have.status(200); });"] } }] }
+      ]
+    },
+    {
+      "name": "02 - ATM setup",
+      "item": [
+        { "name": "Create ATM", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Demo ATM\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/atms" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.response.to.have.status(201);", "const body = pm.response.json();", "pm.environment.set('atmId', body.id);", "pm.test('ATM id was saved', function () { pm.expect(body.id).to.be.a('string'); });"] } }] },
+        { "name": "Configure five cassettes", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"cassettes\": [\n    { \"number\": 1, \"kind\": \"Recycling\", \"currency\": \"TRY\", \"denomination\": 50 },\n    { \"number\": 2, \"kind\": \"Recycling\", \"currency\": \"TRY\", \"denomination\": 20 },\n    { \"number\": 3, \"kind\": \"Recycling\", \"currency\": \"USD\", \"denomination\": 100 },\n    { \"number\": 4, \"kind\": \"Recycling\", \"currency\": \"EUR\", \"denomination\": 100 },\n    { \"number\": 5, \"kind\": \"DepositOnly\", \"currency\": null, \"denomination\": null }\n  ]\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/atms/{{atmId}}/configuration" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.expect(pm.response.code).to.be.within(200, 299);"] } }] },
+        { "name": "Load opening cash", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "X-User", "value": "{{user}}" }], "body": { "mode": "raw", "raw": "{\n  \"notes\": [\n    { \"cassetteNumber\": 1, \"currency\": \"TRY\", \"denomination\": 50, \"count\": 10 },\n    { \"cassetteNumber\": 2, \"currency\": \"TRY\", \"denomination\": 20, \"count\": 10 },\n    { \"cassetteNumber\": 3, \"currency\": \"USD\", \"denomination\": 100, \"count\": 10 },\n    { \"cassetteNumber\": 4, \"currency\": \"EUR\", \"denomination\": 100, \"count\": 10 }\n  ]\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/atms/{{atmId}}/load" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.expect(pm.response.code).to.be.within(200, 299);"] } }] },
+        { "name": "Set ATM in service", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"state\": \"IN_SERVICE\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/atms/{{atmId}}/state" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.expect(pm.response.code).to.be.within(200, 299);"] } }] }
+      ]
+    },
+    {
+      "name": "03 - Withdrawals",
+      "item": [
+        { "name": "Create TRY 80 quote", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"cardNumber\": \"{{cardNumber}}\",\n  \"currency\": \"TRY\",\n  \"amount\": 80\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/atms/{{atmId}}/quotes" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.response.to.have.status(200);", "const body = pm.response.json();", "pm.environment.set('quoteId', body.id);", "const alternative = body.alternatives.find(function (item) { return item.kind === 'Exact'; });", "pm.expect(alternative).to.exist;", "pm.environment.set('alternativeId', alternative.id);"] } }] },
+        { "name": "Confirm selected alternative", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }], "body": { "mode": "raw", "raw": "{\n  \"alternativeId\": \"{{alternativeId}}\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/quotes/{{quoteId}}/confirm" }, "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.environment.set('idempotencyKey', 'postman-' + pm.variables.replaceIn('{{$guid}}'));"] } }, { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.expect(pm.response.code).to.be.within(200, 299);", "pm.expect(pm.response.json().alternativeId).to.eql(pm.environment.get('alternativeId'));"] } }] },
+        { "name": "Create quote to cancel", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"cardNumber\": \"{{cardNumber}}\",\n  \"currency\": \"TRY\",\n  \"amount\": 20\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/atms/{{atmId}}/quotes" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.response.to.have.status(200);", "pm.environment.set('cancelQuoteId', pm.response.json().id);"] } }] },
+        { "name": "Cancel quote", "request": { "method": "POST", "url": "{{baseUrl}}/api/quotes/{{cancelQuoteId}}/cancel" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.expect(pm.response.code).to.be.within(200, 299);"] } }] }
+      ]
+    },
+    {
+      "name": "04 - Deposits",
+      "item": [
+        { "name": "Deposit recognized notes", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"notes\": [\n    { \"currency\": \"TRY\", \"denomination\": 50, \"count\": 2 },\n    { \"currency\": \"USD\", \"denomination\": 20, \"count\": 1 }\n  ],\n  \"unrecognisedCount\": 1\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/atms/{{atmId}}/deposits" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.expect(pm.response.code).to.be.within(200, 299);", "const body = pm.response.json();", "pm.expect(body.operationId).to.be.a('string');", "pm.expect(body).to.have.property('acceptedCount');", "pm.expect(body).to.have.property('returnedCount');"] } }] }
+      ]
+    },
+    {
+      "name": "05 - Reconciliation approval",
+      "item": [
+        { "name": "Put ATM in maintenance", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"state\": \"MAINTENANCE\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/atms/{{atmId}}/state" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.expect(pm.response.code).to.be.within(200, 299);"] } }] },
+        { "name": "Read ATM report and prepare physical count", "request": { "method": "GET", "url": "{{baseUrl}}/api/atms/{{atmId}}/report" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.response.to.have.status(200);", "const report = pm.response.json();", "const cassettes = report.cassettes.map(function (cassette) { return { cassetteNumber: cassette.number, notes: cassette.notes.map(function (note) { return { currency: note.currency, denomination: note.denomination, count: note.count }; }) }; });", "const usd = cassettes.find(function (cassette) { return cassette.cassetteNumber === 3; }).notes.find(function (note) { return note.currency === 'USD' && note.denomination === 100; });", "usd.count = usd.count < 100 ? usd.count + 1 : usd.count - 1;", "pm.environment.set('reconciliationBody', JSON.stringify({ cassettes: cassettes }));"] } }] },
+        { "name": "Create high-difference reconciliation", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "X-User", "value": "{{user}}" }], "body": { "mode": "raw", "raw": "{{reconciliationBody}}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/atms/{{atmId}}/reconciliations" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.expect(pm.response.code).to.be.within(200, 299);", "const body = pm.response.json();", "pm.environment.set('reconciliationId', body.id);", "pm.expect(body.status).to.eql('PendingApproval');"] } }] },
+        { "name": "Reject self-approval", "request": { "method": "POST", "header": [{ "key": "X-User", "value": "{{user}}" }], "url": "{{baseUrl}}/api/reconciliations/{{reconciliationId}}/approve" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.response.to.have.status(409);", "pm.expect(pm.response.json().code).to.eql('SELF_APPROVAL_FORBIDDEN');"] } }] },
+        { "name": "Approve as a second user", "request": { "method": "POST", "header": [{ "key": "X-User", "value": "{{approverUser}}" }], "url": "{{baseUrl}}/api/reconciliations/{{reconciliationId}}/approve" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.expect(pm.response.code).to.be.within(200, 299);", "const body = pm.response.json();", "pm.expect(body.status).to.eql('Approved');", "pm.expect(body.approvedBy).to.eql(pm.environment.get('approverUser'));"] } }] },
+        { "name": "Return ATM to service", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"state\": \"IN_SERVICE\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/atms/{{atmId}}/state" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.expect(pm.response.code).to.be.within(200, 299);"] } }] }
+      ]
+    },
+    {
+      "name": "06 - Reports",
+      "item": [
+        { "name": "Get ATM details", "request": { "method": "GET", "url": "{{baseUrl}}/api/atms/{{atmId}}" } },
+        { "name": "Get ATM report", "request": { "method": "GET", "url": "{{baseUrl}}/api/atms/{{atmId}}/report" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.response.to.have.status(200);", "const body = pm.response.json();", "pm.expect(body.cassettes).to.have.length(5);", "pm.expect(body).to.have.property('overallTryBalance');"] } }] },
+        { "name": "Check ledger consistency", "request": { "method": "GET", "url": "{{baseUrl}}/api/atms/{{atmId}}/consistency" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.response.to.have.status(200);", "pm.expect(pm.response.json().consistent).to.eql(true);"] } }] },
+        { "name": "Get network report", "request": { "method": "GET", "url": "{{baseUrl}}/api/report" }, "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Network report includes the new ATM', function () {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(JSON.stringify(body)).to.include(pm.environment.get('atmId'));", "});"] } }] },
+        { "name": "List exchange rates", "request": { "method": "GET", "url": "{{baseUrl}}/api/exchange-rates" } },
+        { "name": "List ATMs", "request": { "method": "GET", "url": "{{baseUrl}}/api/atms" } }
+      ]
+    }
+  ]
+}
+
