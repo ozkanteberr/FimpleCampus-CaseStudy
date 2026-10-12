@@ -1,0 +1,20 @@
+@AtmCash.Api_HostAddress = http://localhost:5080
+
+GET {{AtmCash.Api_HostAddress}}/health
+Accept: application/json
+
+###
+
+GET {{AtmCash.Api_HostAddress}}/api/atms
+Accept: application/json
+
+###
+
+POST {{AtmCash.Api_HostAddress}}/api/atms
+Content-Type: application/json
+
+{
+  "name": "Istanbul-001"
+}
+
+###
