@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AtmCash.Domain;
 using Microsoft.EntityFrameworkCore;
 
@@ -95,15 +96,30 @@ public sealed class QuoteOperations(CashDbContext db, TimeProvider clock, CardId
                         y.Denomination, y.Count)).ToArray())).ToArray());
     }
 
-    public async Task<QuoteConfirmationResult> Confirm(Guid quoteId, Guid alternativeId, CancellationToken ct)
+    public async Task<QuoteConfirmationResult> Confirm(Guid quoteId, Guid alternativeId, string idempotencyKey,
+        CancellationToken ct)
     {
+        CashRules.Require(!string.IsNullOrWhiteSpace(idempotencyKey) && idempotencyKey.Length <= 128,
+            "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key header (1 to 128 characters) is required.", 400);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({"idempotency:" + idempotencyKey}, 0))", ct);
+        var previous = await db.WithdrawalConfirmations.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.IdempotencyKey == idempotencyKey, ct);
+        if (previous is not null)
+        {
+            CashRules.Require(previous.QuoteId == quoteId && previous.AlternativeId == alternativeId,
+                "IDEMPOTENCY_CONFLICT", "Idempotency key was used with a different confirmation request.", 409);
+            return JsonSerializer.Deserialize<QuoteConfirmationResult>(previous.ResponseJson)
+                ?? throw new InvalidOperationException("Stored confirmation response is invalid.");
+        }
+
         var identity = await db.WithdrawalQuotes.AsNoTracking().Where(x => x.Id == quoteId)
             .Select(x => new { x.AtmId, x.CardFingerprint }).SingleOrDefaultAsync(ct)
             ?? throw new BusinessException("QUOTE_NOT_FOUND", "Quote was not found.", 404);
         CashRules.Require(identity.CardFingerprint is not null, "QUOTE_NOT_CONFIRMABLE",
             "Quote has no card identity.", 409);
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({"card:" + identity.CardFingerprint}, 0))", ct);
         await db.Database.ExecuteSqlInterpolatedAsync(
@@ -163,14 +179,19 @@ public sealed class QuoteOperations(CashDbContext db, TimeProvider clock, CardId
         quote.Status = WithdrawalQuoteStatus.Confirmed;
         quote.SelectedAlternativeId = alternativeId;
         quote.ConfirmedAt = now;
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-
         var cassetteNumbers = atm.Cassettes.ToDictionary(x => x.Id, x => x.Number);
-        return new QuoteConfirmationResult(quote.Id, alternative.Id, quote.Currency, alternative.Amount, now,
+        var result = new QuoteConfirmationResult(quote.Id, alternative.Id, quote.Currency, alternative.Amount, now,
             alternative.Allocations.OrderBy(x => cassetteNumbers[x.CassetteId]).ThenByDescending(x => x.Denomination)
                 .Select(x => new QuoteAllocation(cassetteNumbers[x.CassetteId], x.Currency,
                     x.Denomination, x.Count)).ToArray());
+        db.WithdrawalConfirmations.Add(new WithdrawalConfirmation
+        {
+            IdempotencyKey = idempotencyKey, QuoteId = quote.Id, AlternativeId = alternative.Id,
+            ResponseJson = JsonSerializer.Serialize(result)
+        });
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return result;
     }
 
     private static WithdrawalAlternative Allocate(Atm atm, Currency currency,

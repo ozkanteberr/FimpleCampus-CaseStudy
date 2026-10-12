@@ -13,6 +13,7 @@ public sealed class CashDbContext(DbContextOptions<CashDbContext> options) : DbC
     public DbSet<WithdrawalAlternative> WithdrawalAlternatives => Set<WithdrawalAlternative>();
     public DbSet<WithdrawalAllocation> WithdrawalAllocations => Set<WithdrawalAllocation>();
     public DbSet<WithdrawalReservation> WithdrawalReservations => Set<WithdrawalReservation>();
+    public DbSet<WithdrawalConfirmation> WithdrawalConfirmations => Set<WithdrawalConfirmation>();
     public DbSet<CardDailyUsage> CardDailyUsages => Set<CardDailyUsage>();
     public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
     public DbSet<OutboxEvent> Outbox => Set<OutboxEvent>();
@@ -84,6 +85,11 @@ public sealed class CashDbContext(DbContextOptions<CashDbContext> options) : DbC
             t.HasCheckConstraint("CK_WithdrawalReservation_Count", "\"Count\" BETWEEN 1 AND 100");
             t.HasCheckConstraint("CK_WithdrawalReservation_Note", "\"Currency\" IN ('TRY','USD','EUR') AND \"Denomination\" IN (20,50,100,500)");
         });
+        model.Entity<WithdrawalConfirmation>().HasKey(x => x.IdempotencyKey);
+        model.Entity<WithdrawalConfirmation>().Property(x => x.IdempotencyKey).HasMaxLength(128);
+        model.Entity<WithdrawalConfirmation>().Property(x => x.ResponseJson).HasColumnType("jsonb");
+        model.Entity<WithdrawalConfirmation>().HasOne<WithdrawalQuote>().WithMany()
+            .HasForeignKey(x => x.QuoteId).OnDelete(DeleteBehavior.Restrict);
         model.Entity<CardDailyUsage>().HasKey(x => new { x.CardFingerprint, x.Currency, x.UtcDate });
         model.Entity<CardDailyUsage>().Property(x => x.CardFingerprint).HasMaxLength(64).IsUnicode(false);
         model.Entity<CardDailyUsage>().Property(x => x.Currency).HasConversion<string>();

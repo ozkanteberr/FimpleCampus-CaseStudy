@@ -298,6 +298,29 @@ namespace AtmCash.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AtmCash.Domain.WithdrawalConfirmation", b =>
+                {
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("AlternativeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("QuoteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("IdempotencyKey");
+
+                    b.HasIndex("QuoteId");
+
+                    b.ToTable("WithdrawalConfirmations");
+                });
+
             modelBuilder.Entity("AtmCash.Domain.WithdrawalQuote", b =>
                 {
                     b.Property<Guid>("Id")
@@ -435,6 +458,15 @@ namespace AtmCash.Infrastructure.Migrations
                 {
                     b.HasOne("AtmCash.Domain.WithdrawalQuote", null)
                         .WithMany("Alternatives")
+                        .HasForeignKey("QuoteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AtmCash.Domain.WithdrawalConfirmation", b =>
+                {
+                    b.HasOne("AtmCash.Domain.WithdrawalQuote", null)
+                        .WithMany()
                         .HasForeignKey("QuoteId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();

@@ -67,18 +67,28 @@ public sealed class QuoteConfirmationIntegrationTests
             var otherId = alternatives.Single(x => x.GetProperty("kind").GetString() != kind)
                 .GetProperty("id").GetGuid();
 
+            var key = "confirmed-" + Guid.NewGuid().ToString("N");
+            await ExpectError(Confirm(client, quoteId, Guid.NewGuid(), key),
+                HttpStatusCode.NotFound, "ALTERNATIVE_NOT_FOUND");
             await ExpectError(client.PostAsJsonAsync($"/api/quotes/{quoteId}/confirm",
-                new { alternativeId = Guid.NewGuid() }), HttpStatusCode.NotFound, "ALTERNATIVE_NOT_FOUND");
-            var confirmation = await Read(await client.PostAsJsonAsync($"/api/quotes/{quoteId}/confirm",
-                new { alternativeId = selectedId }));
+                new { alternativeId = selectedId }), HttpStatusCode.BadRequest, "INVALID_IDEMPOTENCY_KEY");
+            var responses = await Task.WhenAll(Confirm(client, quoteId, selectedId, key),
+                Confirm(client, quoteId, selectedId, key));
+            var confirmation = await Read(responses[0]);
+            var replay = await Read(responses[1]);
+            Assert.Equal(confirmation.GetRawText(), replay.GetRawText());
             Assert.Equal(quoteId, confirmation.GetProperty("quoteId").GetGuid());
             Assert.Equal(selectedId, confirmation.GetProperty("alternativeId").GetGuid());
             Assert.Equal(amount, confirmation.GetProperty("amount").GetInt32());
             Assert.Equal(1, NoteCount(confirmation, 1));
             Assert.Equal(2 - remainingTwenties, NoteCount(confirmation, 2));
 
-            await ExpectError(client.PostAsJsonAsync($"/api/quotes/{quoteId}/confirm",
-                new { alternativeId = otherId }), HttpStatusCode.Conflict, "QUOTE_NOT_ACTIVE");
+            await ExpectError(Confirm(client, quoteId, otherId, key),
+                HttpStatusCode.Conflict, "IDEMPOTENCY_CONFLICT");
+            await ExpectError(Confirm(client, Guid.NewGuid(), selectedId, key),
+                HttpStatusCode.Conflict, "IDEMPOTENCY_CONFLICT");
+            await ExpectError(Confirm(client, quoteId, otherId, "new-" + Guid.NewGuid().ToString("N")),
+                HttpStatusCode.Conflict, "QUOTE_NOT_ACTIVE");
             var report = await Read(await client.GetAsync($"/api/atms/{atmId}/report"));
             Assert.Equal(0, report.GetProperty("cassettes")[0].GetProperty("count").GetInt32());
             Assert.Equal(remainingTwenties, report.GetProperty("cassettes")[1].GetProperty("count").GetInt32());
@@ -102,6 +112,7 @@ public sealed class QuoteConfirmationIntegrationTests
                 && x.Type == MovementType.RESERVATION_RELEASE));
             Assert.Equal(2, await db.Movements.CountAsync(x => x.OperationId == quoteId
                 && x.Type == MovementType.WITHDRAWAL));
+            Assert.Equal(1, await db.WithdrawalConfirmations.CountAsync());
         }
         finally
         {
@@ -123,6 +134,16 @@ public sealed class QuoteConfirmationIntegrationTests
 
     private static object Cassette(int number, string kind, string? currency, int? denomination) =>
         new { number, kind, currency, denomination };
+
+    private static async Task<HttpResponseMessage> Confirm(HttpClient client, Guid quoteId, Guid alternativeId, string key)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/quotes/{quoteId}/confirm")
+        {
+            Content = JsonContent.Create(new { alternativeId })
+        };
+        request.Headers.Add("Idempotency-Key", key);
+        return await client.SendAsync(request);
+    }
 
     private static async Task<JsonElement> Read(HttpResponseMessage response)
     {
