@@ -58,6 +58,8 @@ api.MapPost("/atms/{id:guid}/state", async (Guid id, StateRequest request, AtmOp
     await service.ChangeState(id, request.State, ct));
 api.MapPost("/atms/{id:guid}/quotes", async (Guid id, QuoteRequest request, QuoteOperations service, CancellationToken ct) =>
     await service.Create(id, request.CardNumber, request.Currency, request.Amount, ct)).WithName("CreateQuote");
+api.MapPost("/quotes/{id:guid}/confirm", async (Guid id, ConfirmQuoteRequest request, QuoteOperations service, CancellationToken ct) =>
+    await service.Confirm(id, request.AlternativeId, ct)).WithName("ConfirmQuote");
 api.MapGet("/atms/{id:guid}/report", async (Guid id, AtmOperations service, CancellationToken ct) => await service.Report(id, ct));
 api.MapGet("/atms/{id:guid}/consistency", async (Guid id, AtmOperations service, CancellationToken ct) => await service.CheckConsistency(id, ct));
 api.MapGet("/exchange-rates", async (CashDbContext db, CancellationToken ct) => await db.ExchangeRates.AsNoTracking().ToListAsync(ct));
@@ -80,6 +82,7 @@ public sealed record ConfigurationRequest(List<CassetteDefinition> Cassettes);
 public sealed record CashRequest(List<CashEntry> Notes);
 public sealed record StateRequest(AtmState State);
 public sealed record QuoteRequest(string CardNumber, Currency Currency, int Amount);
+public sealed record ConfirmQuoteRequest(Guid AlternativeId);
 
 public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<ApiExceptionHandler> logger) : IExceptionHandler
 {

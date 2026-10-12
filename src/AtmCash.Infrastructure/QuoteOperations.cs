@@ -8,6 +8,8 @@ public sealed record QuoteAlternativeResult(Guid Id, WithdrawalAlternativeKind K
     IReadOnlyList<QuoteAllocation> Notes);
 public sealed record QuoteResult(Guid Id, Guid AtmId, Currency Currency, int RequestedAmount,
     DateTimeOffset ExpiresAt, IReadOnlyList<QuoteAlternativeResult> Alternatives);
+public sealed record QuoteConfirmationResult(Guid QuoteId, Guid AlternativeId, Currency Currency,
+    int Amount, DateTimeOffset ConfirmedAt, IReadOnlyList<QuoteAllocation> Notes);
 
 public sealed class QuoteOperations(CashDbContext db, TimeProvider clock, CardIdentity cards, NoteSelector selector)
 {
@@ -17,7 +19,6 @@ public sealed class QuoteOperations(CashDbContext db, TimeProvider clock, CardId
         var cardFingerprint = cards.Fingerprint(cardNumber);
         CardDailyLimitRules.Limit(currency);
         CashRules.Require(requestedAmount > 0, "INVALID_AMOUNT", "Withdrawal amount must be positive.");
-        var now = clock.GetUtcNow();
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({"card:" + cardFingerprint}, 0))", ct);
@@ -30,6 +31,7 @@ public sealed class QuoteOperations(CashDbContext db, TimeProvider clock, CardId
         CashRules.Require(atm.State == AtmState.IN_SERVICE,
             "INVALID_ATM_STATE", "Withdrawals require IN_SERVICE.", 409);
 
+        var now = clock.GetUtcNow();
         var utcDate = CardDailyLimitRules.UtcDate(now);
         var usage = await db.CardDailyUsages.SingleOrDefaultAsync(x => x.CardFingerprint == cardFingerprint
             && x.Currency == currency && x.UtcDate == utcDate, ct);
@@ -91,6 +93,84 @@ public sealed class QuoteOperations(CashDbContext db, TimeProvider clock, CardId
                 x.Allocations.OrderBy(y => cassetteNumbers[y.CassetteId]).ThenByDescending(y => y.Denomination)
                     .Select(y => new QuoteAllocation(cassetteNumbers[y.CassetteId], y.Currency,
                         y.Denomination, y.Count)).ToArray())).ToArray());
+    }
+
+    public async Task<QuoteConfirmationResult> Confirm(Guid quoteId, Guid alternativeId, CancellationToken ct)
+    {
+        var identity = await db.WithdrawalQuotes.AsNoTracking().Where(x => x.Id == quoteId)
+            .Select(x => new { x.AtmId, x.CardFingerprint }).SingleOrDefaultAsync(ct)
+            ?? throw new BusinessException("QUOTE_NOT_FOUND", "Quote was not found.", 404);
+        CashRules.Require(identity.CardFingerprint is not null, "QUOTE_NOT_CONFIRMABLE",
+            "Quote has no card identity.", 409);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({"card:" + identity.CardFingerprint}, 0))", ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({"atm:" + identity.AtmId}, 0))", ct);
+
+        var quote = await db.WithdrawalQuotes.Include(x => x.Alternatives).ThenInclude(x => x.Allocations)
+            .Include(x => x.Reservations).AsSplitQuery().SingleAsync(x => x.Id == quoteId, ct);
+        CashRules.Require(quote.Status == WithdrawalQuoteStatus.Active,
+            "QUOTE_NOT_ACTIVE", "Only an active quote can be confirmed.", 409);
+        var now = clock.GetUtcNow();
+        CashRules.Require(now < quote.ExpiresAt
+            && CardDailyLimitRules.UtcDate(now) == CardDailyLimitRules.UtcDate(quote.CreatedAt),
+            "QUOTE_EXPIRED", "Quote validity period has ended.", 409);
+        var alternative = quote.Alternatives.SingleOrDefault(x => x.Id == alternativeId)
+            ?? throw new BusinessException("ALTERNATIVE_NOT_FOUND", "Alternative does not belong to the quote.", 404);
+
+        var atm = await db.Atms.Include(x => x.Cassettes).ThenInclude(x => x.Stocks)
+            .SingleAsync(x => x.Id == quote.AtmId, ct);
+        CashRules.Require(atm.State == AtmState.IN_SERVICE,
+            "INVALID_ATM_STATE", "Withdrawals require IN_SERVICE.", 409);
+        var usage = await db.CardDailyUsages.SingleAsync(x => x.CardFingerprint == quote.CardFingerprint
+            && x.Currency == quote.Currency && x.UtcDate == CardDailyLimitRules.UtcDate(quote.CreatedAt), ct);
+        CardDailyLimitRules.Confirm(usage, quote.ReservedLimitAmount, alternative.Amount);
+
+        var selected = alternative.Allocations.ToDictionary(
+            x => (x.CassetteId, x.Currency, x.Denomination), x => x.Count);
+        var reservations = quote.Reservations.ToDictionary(
+            x => (x.CassetteId, x.Currency, x.Denomination));
+        CashRules.Require(selected.All(x => reservations.TryGetValue(x.Key, out var reserved) && x.Value <= reserved.Count),
+            "RESERVATION_MISMATCH", "Selected notes exceed the quote reservation.", 409);
+        foreach (var reservation in quote.Reservations)
+        {
+            var cassette = atm.Cassettes.Single(x => x.Id == reservation.CassetteId);
+            var stock = cassette.Stocks.Single(x => x.Currency == reservation.Currency
+                && x.Denomination == reservation.Denomination);
+            var count = selected.GetValueOrDefault((reservation.CassetteId, reservation.Currency, reservation.Denomination));
+            CashRules.Require(stock.Reserved >= reservation.Count && stock.Count >= count,
+                "RESERVATION_MISMATCH", "Cassette stock does not match the quote reservation.", 409);
+            stock.Reserved -= reservation.Count;
+            stock.Count -= count;
+            db.Movements.Add(new Movement
+            {
+                CassetteId = cassette.Id, Currency = reservation.Currency,
+                Denomination = reservation.Denomination, Type = MovementType.RESERVATION_RELEASE,
+                ReservedDelta = -reservation.Count, OperationId = quote.Id,
+                User = "system", CreatedAt = now
+            });
+            if (count > 0)
+                db.Movements.Add(new Movement
+                {
+                    CassetteId = cassette.Id, Currency = reservation.Currency,
+                    Denomination = reservation.Denomination, Type = MovementType.WITHDRAWAL,
+                    CountDelta = -count, OperationId = quote.Id,
+                    User = "system", CreatedAt = now
+                });
+        }
+        quote.Status = WithdrawalQuoteStatus.Confirmed;
+        quote.SelectedAlternativeId = alternativeId;
+        quote.ConfirmedAt = now;
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+
+        var cassetteNumbers = atm.Cassettes.ToDictionary(x => x.Id, x => x.Number);
+        return new QuoteConfirmationResult(quote.Id, alternative.Id, quote.Currency, alternative.Amount, now,
+            alternative.Allocations.OrderBy(x => cassetteNumbers[x.CassetteId]).ThenByDescending(x => x.Denomination)
+                .Select(x => new QuoteAllocation(cassetteNumbers[x.CassetteId], x.Currency,
+                    x.Denomination, x.Count)).ToArray());
     }
 
     private static WithdrawalAlternative Allocate(Atm atm, Currency currency,

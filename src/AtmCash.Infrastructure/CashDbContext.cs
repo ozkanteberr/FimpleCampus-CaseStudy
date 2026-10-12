@@ -53,6 +53,8 @@ public sealed class CashDbContext(DbContextOptions<CashDbContext> options) : DbC
                 "\"CardFingerprint\" IS NULL OR \"CardFingerprint\" ~ '^[0-9a-f]{64}$'");
             t.HasCheckConstraint("CK_WithdrawalQuote_LimitReservation",
                 "\"ReservedLimitAmount\" >= 0 AND (\"CardFingerprint\" IS NOT NULL OR \"ReservedLimitAmount\" = 0)");
+            t.HasCheckConstraint("CK_WithdrawalQuote_Confirmation",
+                "\"Status\" <> 'Confirmed' OR (\"SelectedAlternativeId\" IS NOT NULL AND \"ConfirmedAt\" IS NOT NULL)");
         });
         model.Entity<WithdrawalAlternative>().Property(x => x.Kind).HasConversion<string>();
         model.Entity<WithdrawalAlternative>().HasOne<WithdrawalQuote>().WithMany(x => x.Alternatives)

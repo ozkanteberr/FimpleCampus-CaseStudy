@@ -12,6 +12,8 @@ public sealed class WithdrawalQuote
     public string? CardFingerprint { get; set; }
     public int ReservedLimitAmount { get; set; }
     public WithdrawalQuoteStatus Status { get; set; } = WithdrawalQuoteStatus.Active;
+    public Guid? SelectedAlternativeId { get; set; }
+    public DateTimeOffset? ConfirmedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public List<WithdrawalAlternative> Alternatives { get; set; } = [];

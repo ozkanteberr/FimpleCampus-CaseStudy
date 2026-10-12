@@ -312,6 +312,9 @@ namespace AtmCash.Infrastructure.Migrations
                         .IsUnicode(false)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -327,6 +330,9 @@ namespace AtmCash.Infrastructure.Migrations
 
                     b.Property<int>("ReservedLimitAmount")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("SelectedAlternativeId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -345,6 +351,8 @@ namespace AtmCash.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_WithdrawalQuote_Amount", "\"RequestedAmount\" > 0");
 
                             t.HasCheckConstraint("CK_WithdrawalQuote_CardFingerprint", "\"CardFingerprint\" IS NULL OR \"CardFingerprint\" ~ '^[0-9a-f]{64}$'");
+
+                            t.HasCheckConstraint("CK_WithdrawalQuote_Confirmation", "\"Status\" <> 'Confirmed' OR (\"SelectedAlternativeId\" IS NOT NULL AND \"ConfirmedAt\" IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_WithdrawalQuote_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
 
