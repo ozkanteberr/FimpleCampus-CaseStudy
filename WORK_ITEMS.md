@@ -12,7 +12,7 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G04 | Kaset ve durum domain kuralları | Para/kupür/döviz ve geçiş unit testleri geçer | Doğrulandı |
 | G05 | EF model ve ilk migration | Gerçek PostgreSQL'de temiz migration ve seed | Verified on PostgreSQL 17 |
 | G06 | ATM oluştur/konfigüre/yükle/hizmete al | Gerçek DB üzerinden HTTP akışı + rollback/kapasite testleri | Verified with PostgreSQL 17 HTTP integration test |
-| G07 | Bakım/boşalt/yeniden yapılandır | Yanlış durumda ret; fiziksel stok/movement tutarlılığı | Kodlandı / doğrulama bekliyor |
+| G07 | Bakım/boşalt/yeniden yapılandır | Yanlış durumda ret; fiziksel stok/movement tutarlılığı | Verified with PostgreSQL 17 maintenance integration test |
 | G08 | Ledger immutable ve consistency | SQL update/delete reddi, doğru/bozuk stok tespiti | Kodlandı / doğrulama bekliyor |
 | G09 | Docker, Swagger, ProblemDetails, health | Temiz compose ve gerçek HTTP doğrulaması | Kodlandı / doğrulama bekliyor |
 | G10 | Quote/alternative/reservation modeli | Migration ve reservation toplam kuralları | Bekliyor |

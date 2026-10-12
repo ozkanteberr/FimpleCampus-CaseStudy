@@ -46,6 +46,11 @@ public sealed class AtmOperations(CashDbContext db, TimeProvider clock)
         CashRules.RequireMaintenance(atm.State);
         CashRules.Require(atm.Cassettes.All(x => x.Stocks.All(s => s.Count == 0 && s.Reserved == 0)),
             "CASSETTE_NOT_EMPTY", "All cassettes must be empty before reconfiguration.", 409);
+        foreach (var existing in atm.Cassettes)
+        {
+            db.Stocks.RemoveRange(existing.Stocks);
+            existing.Stocks.Clear();
+        }
         foreach (var definition in definitions)
         {
             var cassette = atm.Cassettes.SingleOrDefault(x => x.Number == definition.Number);
