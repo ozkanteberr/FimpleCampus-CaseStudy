@@ -36,9 +36,9 @@ Durumlar: **Doğrulandı**, **Kodlandı / doğrulama bekliyor**, **Bekliyor**.
 | G28 | Outbox hosted service | Log pending events, mark sent, and retry after failure | Verified with PostgreSQL retry and hosted-worker integration tests |
 | G29 | Postman collection/environment | Pass IDs through the complete ordered end-to-end scenario | Verified: 22 Newman requests passed against the current API and PostgreSQL 17 |
 | G30 | Error and API contract review | ProblemDetails for null, invalid, missing-header, and state-conflict requests | Verified with PostgreSQL API integration coverage and all 56 Release tests passing |
-| G31 | Temiz Docker ve tam test koşusu | Release + tüm unit/integration + E2E geçer | Bekliyor |
+| G31 | Clean Docker and full test run | Release unit/integration suite plus ordered end-to-end scenario | Verified: fresh Compose volume, 56 Release tests, 22 Newman requests |
 | G32 | README, izlenebilirlik ve teslim | Gerçek durum, varsayımlar, AI beyanı, Git/ZIP | Bekliyor |
 
 ## Next atomic step
 
-G31: rebuild a clean Docker stack and run the full Release suite plus the ordered Postman scenario against it.
+G32: finalize English documentation, traceability, and repository/ZIP delivery evidence.

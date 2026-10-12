@@ -1,32 +1,14 @@
-# İlk Atomik Çalışma — Doğrulama Kaydı
+# Verification record
 
-Tarih: 12 Ekim 2026 (Europe/Istanbul).
+Date: 12 October 2026 (Europe/Istanbul).
 
-## Doğrulananlar
+## Release and database checks
 
-- .NET SDK 10.0.401 çalışma alanındaki araç klasörüne kuruldu; işletim sisteminin SDK kurulumu değiştirilmedi.
-- Bütün NuGet bağımlılıkları indirildi. EF Core/Relational paket sürümü çakışmaları giderildi.
-- Solution Release derlemesi: 0 hata, 0 uyarı.
-- Unit testler: 26 geçti, 0 başarısız, 0 atlandı.
-- Bunların 8'i PDF'deki B3 kabul testleridir; tutarlar ve banknot dağılımları kontrol edildi.
-- Bağımsız exhaustive-search testinde 30 küçük stok için 12'şer istek karşılaştırıldı. Tam/alt/üst tutarlar, minimum banknot sayısı, stok sınırı ve toplam tutar denetlendi.
-- Docker Compose konfigürasyonu `docker compose config --quiet` ile doğrulandı.
-- İlk EF migration ve model snapshot üretildi. Migration SQL'i üretildi; bunun gerçek PostgreSQL'e uygulanması henüz doğrulanmadı.
+- A fresh Docker Compose project (`atm-cash-g31`) built the current API image and started PostgreSQL 17 with a new, empty named volume. The database health check passed, EF Core migrations ran on API startup, and `GET /health` returned HTTP 200.
+- The isolated project published the API on `127.0.0.1:5082` and PostgreSQL on `127.0.0.1:55433` to keep the existing local Compose project untouched. The repository's standard `compose.yaml` continues to use ports 5080 and 55432.
+- `dotnet test AtmCashManagement.sln -c Release --no-restore` ran against this fresh PostgreSQL instance through `ATM_TEST_PG`. Result: 56 passed, 0 failed, 0 skipped. This includes the eight B3 acceptance cases, real-database flows, concurrency, reporting, reconciliation, and API error-contract checks.
+- The repository Postman collection ran through Newman against the newly built Compose API with `baseUrl=http://127.0.0.1:5082`. Result: 22 requests passed, 0 failed. The ordered run covered ATM setup, cash load, service, quote/confirm/cancel, deposit, maintenance, physical count, second-user reconciliation approval, return to service, and reports.
 
-## Kodlanmış fakat gerçek ortamda doğrulanmamış
+## Delivery status
 
-- ATM CRUD/konfigürasyon/nakit yükle-boşalt/durum geçişi HTTP endpoint'leri.
-- PostgreSQL advisory lock ve işlemin tamamını kapsayan rollback.
-- LOAD/UNLOAD ledger kayıtları; SQL immutable trigger'ları.
-- Rapor, ledger consistency ve kur seed'i.
-- Uygulama başlangıcında otomatik migration.
-- Swagger/OpenAPI, HTTP hata modeli ve database health endpoint'i.
-- Docker imajı oluşturma, API+DB başlatma ve HTTP uçtan uca akışı.
-
-## Ortam engeli
-
-Docker Desktop başlatıldı ancak araç oturumundan `dockerDesktopLinuxEngine` named pipe bağlantısı `permission denied` döndü. Yerel Docker bağlantısına izin isteme aracı bu özel Windows yolunu temsil edemedi. Bu yüzden PostgreSQL konteyneri başlatılmadı; gerçek DB entegrasyon testleri yazılıp çalıştırılmadı. Compose dosyasının geçerli olması, konteyner akışının test edildiği anlamına gelmez.
-
-## Sıradaki kabul kapısı
-
-G05–G06: gerçek PostgreSQL erişimi, temiz migration, HTTP ATM kurulum akışı, kapasite/yanlış durum/rollback ve ledger tutarlılığı entegrasyon testleri. Bu kapıdan sonra çekim rezervasyonu ayrı atomik iş olarak geliştirilecek.
+The verified collection and environment are in `docs/postman`. The remaining G32 task is final documentation, traceability, and Git repository or ZIP handoff. Local Compose credentials, seeded exchange rates, and the development card HMAC key are demonstration settings.
